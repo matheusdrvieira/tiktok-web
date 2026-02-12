@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authClient } from "./lib/auth-client";
+import { authClient } from "./src/lib/auth-client";
 
-const SESSION_COOKIE_NAME = "x-quizzio-token";
+const isProd = process.env.NODE_ENV === "production";
+const SESSION_COOKIE_NAME = isProd ? "__Secure-x-quizzio-token" : "x-quizzio-token";
 
 const hasSessionCookie = (request: NextRequest): boolean =>
   request.cookies.has(SESSION_COOKIE_NAME);
