@@ -18,7 +18,6 @@ export default function LoginPage() {
       const { data, error: signInError } = await authClient.signIn.social({
         provider: "google",
         callbackURL: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/dashboard`,
-        errorCallbackURL: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/login`,
       });
 
       if (signInError) {
