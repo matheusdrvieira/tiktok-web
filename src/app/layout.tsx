@@ -2,8 +2,8 @@ import "../../styles/global.css";
 import { Metadata, Viewport } from "next";
 
 export const metadata: Metadata = {
-  title: "Remotion and Next.js",
-  description: "Remotion and Next.js",
+  title: "Quizzio Mania",
+  description: "Dashboard de criacao de quizzes em video",
 };
 
 export const viewport: Viewport = {
