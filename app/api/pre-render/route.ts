@@ -29,7 +29,6 @@ export async function POST(request: Request) {
       const tempDirPath = await mkdtemp(path.join(tmpdir(), "quizzio-render-"));
       const outputPath = path.join(tempDirPath, "render.mp4");
       let progress = 10;
-      let smoothProgressTimer: ReturnType<typeof setInterval> | null = null;
 
       try {
         updateRenderJob(job.id, {
@@ -38,17 +37,21 @@ export async function POST(request: Request) {
           message: "Iniciando renderização...",
         });
 
+        const renderArgs = [
+          "render",
+          "components/remotion/entry.ts",
+          COMP_NAME,
+          outputPath,
+          "--props",
+          JSON.stringify(parsed.data),
+          "--concurrency=2",
+          "--log=verbose",
+          "--disallow-parallel-encoding"
+        ];
+
         const renderProcess = execa(
           "remotion",
-          [
-            "render",
-            "components/remotion/entry.ts",
-            COMP_NAME,
-            outputPath,
-            "--props",
-            JSON.stringify(parsed.data),
-            "--disallow-parallel-encoding",
-          ],
+          renderArgs,
           {
             cwd: process.cwd(),
             env: process.env,
@@ -58,25 +61,64 @@ export async function POST(request: Request) {
           },
         );
 
-        smoothProgressTimer = setInterval(() => {
-          if (progress >= 80) {
+        const updateProgressFromLine = (line: string) => {
+          const renderedMatch = line.match(/^Rendered\s+(\d+)\/(\d+)/i);
+
+          if (renderedMatch) {
+            const current = Number(renderedMatch[1]);
+            const total = Number(renderedMatch[2]);
+
+            if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+              const nextProgress = Math.min(85, Math.floor(10 + (current / total) * 75));
+              if (nextProgress > progress) {
+                progress = nextProgress;
+                updateRenderJob(job.id, {
+                  status: "rendering",
+                  progress,
+                  message: `Renderizando vídeo (${current}/${total})...`,
+                });
+              }
+            }
+
             return;
           }
 
-          progress += 1;
-          updateRenderJob(job.id, {
-            status: "rendering",
-            progress,
-            message: "Renderizando vídeo...",
-          });
-        }, 700);
+          const encodedMatch = line.match(/^Encoded\s+(\d+)\/(\d+)/i);
+
+          if (encodedMatch) {
+            const current = Number(encodedMatch[1]);
+            const total = Number(encodedMatch[2]);
+
+            if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
+              const nextProgress = Math.min(95, Math.floor(85 + (current / total) * 10));
+              if (nextProgress > progress) {
+                progress = nextProgress;
+                updateRenderJob(job.id, {
+                  status: "rendering",
+                  progress,
+                  message: `Finalizando render (${current}/${total})...`,
+                });
+              }
+            }
+          }
+        };
+
+        const parseChunk = (chunk: string | Buffer) => {
+          const lines = chunk
+            .toString()
+            .split(/\r?\n|\r/g)
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+
+          for (const line of lines) {
+            updateProgressFromLine(line);
+          }
+        };
+
+        renderProcess.stdout?.on("data", parseChunk);
+        renderProcess.stderr?.on("data", parseChunk);
 
         await renderProcess;
-
-        if (smoothProgressTimer) {
-          clearInterval(smoothProgressTimer);
-          smoothProgressTimer = null;
-        }
 
         progress = Math.max(progress, 88);
         updateRenderJob(job.id, {
@@ -121,11 +163,6 @@ export async function POST(request: Request) {
           },
         });
       } catch (error) {
-        if (smoothProgressTimer) {
-          clearInterval(smoothProgressTimer);
-          smoothProgressTimer = null;
-        }
-
         updateRenderJob(job.id, {
           status: "error",
           progress,
@@ -135,11 +172,6 @@ export async function POST(request: Request) {
               : "Falha ao pre-renderizar vídeo.",
         });
       } finally {
-        if (smoothProgressTimer) {
-          clearInterval(smoothProgressTimer);
-          smoothProgressTimer = null;
-        }
-
         await rm(tempDirPath, { recursive: true, force: true });
       }
     })();

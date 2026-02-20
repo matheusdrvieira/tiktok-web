@@ -1,4 +1,5 @@
 import { parseMedia } from "@remotion/media-parser";
+import { staticFile } from "remotion";
 import { INTRO_DURATION_SECONDS, type QuizQuestion } from "./constants";
 
 export const COUNTDOWN_SECONDS = 8;
@@ -55,8 +56,12 @@ const toFrames = (seconds: number, fps: number): number => {
 
 const getDurationInSecondsForAudio = async (src: string): Promise<number> => {
   try {
+    const audioSrc = src.startsWith("/")
+      ? staticFile(src.replace(/^\/+/, ""))
+      : src;
+
     const { durationInSeconds } = await parseMedia({
-      src,
+      src: audioSrc,
       fields: { durationInSeconds: true },
       acknowledgeRemotionLicense: true,
     });
