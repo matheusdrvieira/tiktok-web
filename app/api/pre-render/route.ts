@@ -61,8 +61,11 @@ export async function POST(request: Request) {
           },
         );
 
+        const stripAnsi = (value: string): string =>
+          value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
+
         const updateProgressFromLine = (line: string) => {
-          const renderedMatch = line.match(/^Rendered\s+(\d+)\/(\d+)/i);
+          const renderedMatch = line.match(/Rendered\s+(\d+)\/(\d+)/i);
 
           if (renderedMatch) {
             const current = Number(renderedMatch[1]);
@@ -83,7 +86,7 @@ export async function POST(request: Request) {
             return;
           }
 
-          const encodedMatch = line.match(/^Encoded\s+(\d+)\/(\d+)/i);
+          const encodedMatch = line.match(/Encoded\s+(\d+)\/(\d+)/i);
 
           if (encodedMatch) {
             const current = Number(encodedMatch[1]);
@@ -107,10 +110,11 @@ export async function POST(request: Request) {
           const lines = chunk
             .toString()
             .split(/\r?\n|\r/g)
-            .map((line) => line.trim())
+            .map((line) => stripAnsi(line).trim())
             .filter((line) => line.length > 0);
 
           for (const line of lines) {
+            console.log(`[pre-render][remotion] ${line}`);
             updateProgressFromLine(line);
           }
         };
