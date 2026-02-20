@@ -1,11 +1,43 @@
+import { bundle } from "@remotion/bundler";
 import { COMP_NAME, CompositionProps } from "@/components/remotion/constants";
+import { renderMedia, selectComposition } from "@remotion/renderer";
 import { api } from "@/utils/axios";
-import { execa } from "execa";
 import { NextResponse } from "next/server";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRenderJob, updateRenderJob } from "./job-store";
+
+const REMOTION_ENTRY_POINT = path.resolve(
+  process.cwd(),
+  "components/remotion/entry.ts",
+);
+
+const globalRemotionBundle = globalThis as typeof globalThis & {
+  __QUIZZIO_REMOTION_BUNDLE__?: Promise<string>;
+};
+
+const normalizePercent = (value: number): number =>
+  value <= 1 ? value * 100 : value;
+
+const getRemotionBundleLocation = (onProgress?: (progress: number) => void) => {
+  if (globalRemotionBundle.__QUIZZIO_REMOTION_BUNDLE__) {
+    return globalRemotionBundle.__QUIZZIO_REMOTION_BUNDLE__;
+  }
+
+  const bundlePromise = bundle({
+    entryPoint: REMOTION_ENTRY_POINT,
+    onProgress: (progress) => {
+      onProgress?.(progress);
+    },
+  }).catch((error) => {
+    globalRemotionBundle.__QUIZZIO_REMOTION_BUNDLE__ = undefined;
+    throw error;
+  });
+
+  globalRemotionBundle.__QUIZZIO_REMOTION_BUNDLE__ = bundlePromise;
+  return bundlePromise;
+};
 
 export async function POST(request: Request) {
   try {
@@ -28,103 +60,79 @@ export async function POST(request: Request) {
     void (async () => {
       const tempDirPath = await mkdtemp(path.join(tmpdir(), "quizzio-render-"));
       const outputPath = path.join(tempDirPath, "render.mp4");
-      let progress = 10;
+      let progress = 1;
 
       try {
         updateRenderJob(job.id, {
           status: "rendering",
           progress,
-          message: "Iniciando renderização...",
+          message: "Preparando bundle do Remotion...",
         });
 
-        const renderArgs = [
-          "render",
-          "components/remotion/entry.ts",
-          COMP_NAME,
-          outputPath,
-          "--props",
-          JSON.stringify(parsed.data),
-          "--concurrency=2",
-          "--log=verbose",
-          "--disallow-parallel-encoding"
-        ];
+        const serveUrl = await getRemotionBundleLocation((bundleProgress) => {
+          const nextProgress = Math.min(
+            18,
+            Math.floor(normalizePercent(bundleProgress) * 0.18),
+          );
 
-        const renderProcess = execa(
-          "remotion",
-          renderArgs,
-          {
-            cwd: process.cwd(),
-            env: process.env,
-            preferLocal: true,
-            killSignal: "SIGKILL",
-            forceKillAfterDelay: 2_000,
+          if (nextProgress > progress) {
+            progress = nextProgress;
+            updateRenderJob(job.id, {
+              status: "rendering",
+              progress,
+              message: "Preparando bundle do Remotion...",
+            });
+          }
+        });
+
+        progress = Math.max(progress, 20);
+        updateRenderJob(job.id, {
+          status: "rendering",
+          progress,
+          message: "Carregando composição...",
+        });
+
+        const composition = await selectComposition({
+          serveUrl,
+          id: COMP_NAME,
+          inputProps: parsed.data,
+          timeoutInMilliseconds: 120_000,
+          logLevel: "warn",
+        });
+
+        await renderMedia({
+          serveUrl,
+          composition,
+          codec: "h264",
+          outputLocation: outputPath,
+          inputProps: parsed.data,
+          concurrency: 2,
+          timeoutInMilliseconds: 120_000,
+          logLevel: "verbose",
+          onProgress: (renderProgressData) => {
+            const renderPercent = normalizePercent(renderProgressData.progress);
+            const nextProgress = Math.min(
+              88,
+              Math.floor(20 + (renderPercent * 68) / 100),
+            );
+
+            if (nextProgress <= progress) {
+              return;
+            }
+
+            progress = nextProgress;
+            updateRenderJob(job.id, {
+              status: "rendering",
+              progress,
+              message:
+                renderProgressData.stitchStage === "encoding"
+                  ? "Renderizando vídeo..."
+                  : "Finalizando render...",
+            });
           },
-        );
+        });
 
-        const stripAnsi = (value: string): string =>
-          value.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
-
-        const updateProgressFromLine = (line: string) => {
-          const renderedMatch = line.match(/Rendered\s+(\d+)\/(\d+)/i);
-
-          if (renderedMatch) {
-            const current = Number(renderedMatch[1]);
-            const total = Number(renderedMatch[2]);
-
-            if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-              const nextProgress = Math.min(85, Math.floor(10 + (current / total) * 75));
-              if (nextProgress > progress) {
-                progress = nextProgress;
-                updateRenderJob(job.id, {
-                  status: "rendering",
-                  progress,
-                  message: `Renderizando vídeo (${current}/${total})...`,
-                });
-              }
-            }
-
-            return;
-          }
-
-          const encodedMatch = line.match(/Encoded\s+(\d+)\/(\d+)/i);
-
-          if (encodedMatch) {
-            const current = Number(encodedMatch[1]);
-            const total = Number(encodedMatch[2]);
-
-            if (Number.isFinite(current) && Number.isFinite(total) && total > 0) {
-              const nextProgress = Math.min(95, Math.floor(85 + (current / total) * 10));
-              if (nextProgress > progress) {
-                progress = nextProgress;
-                updateRenderJob(job.id, {
-                  status: "rendering",
-                  progress,
-                  message: `Finalizando render (${current}/${total})...`,
-                });
-              }
-            }
-          }
-        };
-
-        const parseChunk = (chunk: string | Buffer) => {
-          const lines = chunk
-            .toString()
-            .split(/\r?\n|\r/g)
-            .map((line) => stripAnsi(line).trim())
-            .filter((line) => line.length > 0);
-
-          for (const line of lines) {
-            console.log(`[pre-render][remotion] ${line}`);
-            updateProgressFromLine(line);
-          }
-        };
-
-        renderProcess.stdout?.on("data", parseChunk);
-        renderProcess.stderr?.on("data", parseChunk);
-
-        await renderProcess;
-
-        progress = Math.max(progress, 88);
+        progress = Math.max(progress, 89);
         updateRenderJob(job.id, {
           status: "rendering",
           progress,
