@@ -111,10 +111,9 @@ export async function POST(request: Request) {
           concurrency: "75%",
           x264Preset: "veryfast",
           imageFormat: "jpeg",
-          // scale: 0.75,
           timeoutInMilliseconds: REMOTION_TIMEOUT_MS,
           hardwareAcceleration: 'if-possible',
-          logLevel: "verbose",
+          logLevel: "error",
           onProgress: (renderProgressData) => {
             const renderPercent = normalizePercent(renderProgressData.progress);
             const nextProgress = Math.min(
