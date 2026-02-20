@@ -1,7 +1,7 @@
-import { bundle } from "@remotion/bundler";
 import { COMP_NAME, CompositionProps } from "@/components/remotion/constants";
-import { renderMedia, selectComposition } from "@remotion/renderer";
 import { api } from "@/utils/axios";
+import { bundle } from "@remotion/bundler";
+import { renderMedia, selectComposition } from "@remotion/renderer";
 import { NextResponse } from "next/server";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -106,8 +106,12 @@ export async function POST(request: Request) {
           codec: "h264",
           outputLocation: outputPath,
           inputProps: parsed.data,
-          concurrency: 2,
+          concurrency: "75%",
+          x264Preset: "veryfast",
+          imageFormat: "jpeg",
+          // scale: 0.75,
           timeoutInMilliseconds: 120_000,
+          hardwareAcceleration: 'if-possible',
           logLevel: "verbose",
           onProgress: (renderProgressData) => {
             const renderPercent = normalizePercent(renderProgressData.progress);
