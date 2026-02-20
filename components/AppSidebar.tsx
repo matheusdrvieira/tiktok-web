@@ -92,7 +92,7 @@ export function AppSidebar() {
               <DropdownMenuTrigger asChild>
                 <SidebarMenuButton size="lg" className="w-full">
                   <Avatar className="size-8">
-                    <AvatarImage src={user?.avatarUrl ?? undefined} alt={user?.name} />
+                    <AvatarImage src={user?.image ?? undefined} alt={user?.name ?? "Usuário"} />
                     <AvatarFallback className="bg-primary text-primary-foreground text-xs">
                       {user?.name?.charAt(0) || 'U'}
                     </AvatarFallback>

@@ -74,6 +74,11 @@ export default function Dashboard() {
   const activeProvider: Platform | null = activeIntegration
     ? getPlatformFromProvider(activeIntegration.provider)
     : null;
+  const creatorDisplayName = creatorInfo?.creatorNickname ?? user?.name ?? "Conta não conectada";
+  const creatorChannel = creatorInfo?.creatorUsername
+    ? `@${creatorInfo.creatorUsername}`
+    : "Conecte o TikTok em Integrações";
+  const creatorInitial = creatorDisplayName.charAt(0).toUpperCase();
   const activePlatformLabel = activeProvider
     ? PLATFORM_CONFIG[activeProvider].label
     : "uma plataforma";
@@ -222,16 +227,16 @@ export default function Dashboard() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="flex items-start gap-4">
                 <Avatar className="size-12">
-                  <AvatarImage src={creatorInfo?.creatorAvatarUrl} />
+                  <AvatarImage src={creatorInfo?.creatorAvatarUrl ?? user?.image ?? undefined} />
                   <AvatarFallback className="bg-primary text-primary-foreground">
-                    {creatorInfo?.creatorNickname.charAt(0)}
+                    {creatorInitial}
                   </AvatarFallback>
                 </Avatar>
                 <div className="space-y-1 text-sm min-w-0">
-                  <p className="font-medium">{creatorInfo?.creatorNickname}</p>
+                  <p className="font-medium">{creatorDisplayName}</p>
                   <p className="text-muted-foreground truncate">{user?.email ?? "-"}</p>
                   <div className="pt-2 space-y-1 text-muted-foreground">
-                    <p><span className="text-foreground/70">Canal:</span> {`@${creatorInfo?.creatorUsername}`}</p>
+                    <p><span className="text-foreground/70">Canal:</span> {creatorChannel}</p>
                   </div>
                 </div>
               </div>
