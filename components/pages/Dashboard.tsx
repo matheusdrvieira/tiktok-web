@@ -57,7 +57,8 @@ const sleep = (ms: number): Promise<void> =>
   });
 
 export default function Dashboard() {
-  const { getSession: { data: { user } } } = useAuthService();
+  const { getSession } = useAuthService();
+  const user = getSession.data?.user;
   const { getIntegrations: { data: integrations } } = useIntegrationsService();
   const {
     getCreatorInfo: { data: creatorInfo },
