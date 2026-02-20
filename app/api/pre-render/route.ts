@@ -17,6 +17,8 @@ const globalRemotionBundle = globalThis as typeof globalThis & {
   __QUIZZIO_REMOTION_BUNDLE__?: Promise<string>;
 };
 
+const REMOTION_TIMEOUT_MS = 300_000;
+
 const normalizePercent = (value: number): number =>
   value <= 1 ? value * 100 : value;
 
@@ -96,7 +98,7 @@ export async function POST(request: Request) {
           serveUrl,
           id: COMP_NAME,
           inputProps: parsed.data,
-          timeoutInMilliseconds: 120_000,
+          timeoutInMilliseconds: REMOTION_TIMEOUT_MS,
           logLevel: "warn",
         });
 
@@ -110,7 +112,7 @@ export async function POST(request: Request) {
           x264Preset: "veryfast",
           imageFormat: "jpeg",
           // scale: 0.75,
-          timeoutInMilliseconds: 120_000,
+          timeoutInMilliseconds: REMOTION_TIMEOUT_MS,
           hardwareAcceleration: 'if-possible',
           logLevel: "verbose",
           onProgress: (renderProgressData) => {
