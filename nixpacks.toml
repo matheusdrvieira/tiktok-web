@@ -25,10 +25,10 @@ aptPkgs = [
 ]
 
 [phases.install]
-cmds = ["pnpm install --frozen-lockfile"]
+cmds = ["bun install --frozen-lockfile"]
 
 [phases.build]
-cmds = ["pnpm run build"]
+cmds = ["bun run build"]
 
 [start]
-cmd = "pnpm run start"
+cmd = "bun run start"
