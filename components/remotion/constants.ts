@@ -172,7 +172,11 @@ export const DEFAULT_QUIZ_QUESTIONS: QuizQuestion[] = [
     questionPath: "/tts/10_question.wav",
     answerCorrectPath: "/tts/10_question_correct.wav",
   },
-];
+].map((question) => ({
+  ...question,
+  questionPath: `${process.env.NEXT_PUBLIC_FRONTEND_URL}${question.questionPath}`,
+  answerCorrectPath: `${process.env.NEXT_PUBLIC_FRONTEND_URL}${question.answerCorrectPath}`
+}));
 
 export const DEFAULT_QUIZ_CONTENT: CompositionInputProps = {
   title: DEFAULT_QUIZ_TITLE,
