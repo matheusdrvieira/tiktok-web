@@ -3,40 +3,44 @@
 import { Player } from "@remotion/player";
 import { useEffect, useState } from "react";
 import {
-  DEFAULT_QUIZ_CONTENT,
   DURATION_IN_FRAMES,
   VIDEO_FPS,
   VIDEO_HEIGHT,
   VIDEO_WIDTH,
-  type CompositionInputProps
 } from "./constants";
-import { Main } from "./Main";
+import Main from "./Main";
 import { buildQuizTimeline } from "./quiz-timeline";
+import type { CompositionInputProps } from "./schemas/composition-props.schema";
 
 type RemotionPreviewProps = {
-  inputProps?: CompositionInputProps;
+  inputProps: CompositionInputProps;
 };
 
-export const RemotionPreview = ({ inputProps = DEFAULT_QUIZ_CONTENT }: RemotionPreviewProps) => {
+const getPreviewDurationInFrames = async (
+  questions: CompositionInputProps["questions"],
+): Promise<number> => {
+  try {
+    const timeline = await buildQuizTimeline(questions, VIDEO_FPS);
+    return timeline.totalDurationInFrames;
+  } catch {
+    return DURATION_IN_FRAMES;
+  }
+};
+
+export const RemotionPreview = ({ inputProps }: RemotionPreviewProps) => {
   const [durationInFrames, setDurationInFrames] = useState(DURATION_IN_FRAMES);
 
   useEffect(() => {
-    let isMounted = true;
+    let cancelled = false;
 
-    void buildQuizTimeline(inputProps.questions, VIDEO_FPS)
-      .then((timeline) => {
-        if (isMounted) {
-          setDurationInFrames(timeline.totalDurationInFrames);
-        }
-      })
-      .catch(() => {
-        if (isMounted) {
-          setDurationInFrames(DURATION_IN_FRAMES);
-        }
-      });
+    void getPreviewDurationInFrames(inputProps.questions).then((nextDurationInFrames) => {
+      if (!cancelled) {
+        setDurationInFrames(nextDurationInFrames);
+      }
+    });
 
     return () => {
-      isMounted = false;
+      cancelled = true;
     };
   }, [inputProps.questions]);
 
@@ -48,6 +52,7 @@ export const RemotionPreview = ({ inputProps = DEFAULT_QUIZ_CONTENT }: RemotionP
       fps={VIDEO_FPS}
       compositionHeight={VIDEO_HEIGHT}
       compositionWidth={VIDEO_WIDTH}
+      acknowledgeRemotionLicense
       style={{ width: "100%", height: "100%" }}
       controls
       loop

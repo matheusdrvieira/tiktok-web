@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { useIntegrationsService } from "@/services/integrationsService";
-import type { IntegrationProvider, Platform } from "@/types";
+import { useTikTokService } from "@/services/tiktokService";
+import { useYoutubeService } from "@/services/youtubeService";
+import { IntegrationProvider, type Platform } from "@/types/integrations";
 import { Link2, RefreshCw } from "lucide-react";
 
 const platforms: { id: Platform; name: string; icon: string; description: string }[] = [
@@ -13,12 +15,6 @@ const platforms: { id: Platform; name: string; icon: string; description: string
     id: "tiktok",
     name: "TikTok",
     icon: "♪",
-    description: "Conecte sua conta para publicar vídeos e consultar status.",
-  },
-  {
-    id: "kwai",
-    name: "Kwai",
-    icon: "◆",
     description: "Conecte sua conta para publicar vídeos e consultar status.",
   },
   {
@@ -30,17 +26,19 @@ const platforms: { id: Platform; name: string; icon: string; description: string
 ];
 
 const providerByPlatform: Record<Platform, IntegrationProvider> = {
-  tiktok: "TIKTOK",
-  kwai: "KWAI",
-  youtube: "YOUTUBE",
+  tiktok: IntegrationProvider.TIKTOK,
+  youtube: IntegrationProvider.YOUTUBE,
 };
 
 export default function Integrations() {
-  const { getIntegrations, connectTikTok } = useIntegrationsService();
+  const { getIntegrations } = useIntegrationsService();
+  const { connectTikTok } = useTikTokService();
+  const { connectYoutube } = useYoutubeService();
   const { toast } = useToast();
   const integrations = getIntegrations.data ?? [];
   const isLoadingIntegrations = getIntegrations.isLoading;
   const isConnectingTikTok = connectTikTok.isPending;
+  const isConnectingYoutube = connectYoutube.isPending;
 
   const isConnected = (platform: Platform): boolean => {
     return integrations.some(
@@ -51,16 +49,13 @@ export default function Integrations() {
   };
 
   const handleConnect = async (platform: Platform) => {
-    if (platform !== "tiktok") {
-      toast({
-        title: "Em breve",
-        description: `${platform} ainda não possui fluxo de conexão.`,
-      });
-      return;
-    }
-
     try {
-      await connectTikTok.mutateAsync();
+      if (platform === "tiktok") {
+        await connectTikTok.mutateAsync();
+        return;
+      }
+
+      await connectYoutube.mutateAsync();
     } catch {
       toast({
         title: "Erro ao iniciar conexão",
@@ -99,13 +94,19 @@ export default function Integrations() {
                     <Button
                       size="sm"
                       onClick={() => handleConnect(platform.id)}
-                      disabled={isLoadingIntegrations || (platform.id === "tiktok" && isConnectingTikTok)}
+                      disabled={
+                        isLoadingIntegrations ||
+                        (platform.id === "tiktok" && isConnectingTikTok) ||
+                        (platform.id === "youtube" && isConnectingYoutube)
+                      }
                     >
                       <Link2 className="mr-2 size-4" />
                       {isLoadingIntegrations
                         ? "Verificando..."
                         : platform.id === "tiktok" && isConnectingTikTok
                           ? "Conectando..."
+                          : platform.id === "youtube" && isConnectingYoutube
+                            ? "Conectando..."
                           : "Conectar via OAuth"}
                     </Button>
                   ) : (
@@ -114,7 +115,11 @@ export default function Integrations() {
                       size="sm"
                       className="flex-1"
                       onClick={() => handleConnect(platform.id)}
-                      disabled={isLoadingIntegrations || (platform.id === "tiktok" && isConnectingTikTok)}
+                      disabled={
+                        isLoadingIntegrations ||
+                        (platform.id === "tiktok" && isConnectingTikTok) ||
+                        (platform.id === "youtube" && isConnectingYoutube)
+                      }
                     >
                       <RefreshCw className="mr-2 size-4" />
                       Reautenticar

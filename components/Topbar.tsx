@@ -4,14 +4,16 @@ import { usePathname } from "next/navigation";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 const titles: Record<string, string> = {
-  "/dashboard": "Dashboard",
-  "/rendered-videos": "Vídeos Renderizados",
+  "/studio": "Estúdio",
+  "/publish": "Estúdio",
+  "/videos": "Vídeos",
+  "/rendered-videos": "Vídeos",
   "/integrations": "Integrações",
 };
 
 export function Topbar() {
   const pathname = usePathname();
-  const title = titles[pathname] || "Dashboard";
+  const title = titles[pathname] || "Estúdio";
 
   return (
     <header className="flex h-14 items-center border-b border-border px-4 md:px-6">

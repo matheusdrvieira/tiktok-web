@@ -19,7 +19,7 @@ export const useAuthService = () => {
     mutationFn: async () => {
       const { data } = (await authClient.signIn.social({
         provider: "google",
-        callbackURL: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/dashboard`,
+        callbackURL: `${process.env.NEXT_PUBLIC_FRONTEND_URL}/studio`,
       }))
 
       return data;

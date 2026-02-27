@@ -1,4 +1,9 @@
-export type IntegrationProvider = "TIKTOK" | "KWAI" | "YOUTUBE";
+export enum IntegrationProvider {
+  TIKTOK = "TIKTOK",
+  YOUTUBE = "YOUTUBE",
+}
+
+export type Platform = "tiktok" | "youtube";
 
 export interface Integration {
   id: string;

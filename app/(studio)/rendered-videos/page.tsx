@@ -1,6 +1,5 @@
-import RenderedVideosPage from "@/components/pages/RenderedVideos";
+import { redirect } from "next/navigation";
 
 export default function RenderedVideosRoute() {
-  return <RenderedVideosPage />;
+  redirect("/videos");
 }
-

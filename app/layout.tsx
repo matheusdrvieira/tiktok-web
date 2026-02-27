@@ -4,7 +4,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Quizzio Creator Hub",
-  description: "Dashboard de automação e publicação para Quizzio.",
+  description: "Plataforma de automação e publicação para Quizzio.",
 };
 
 export default function RootLayout({

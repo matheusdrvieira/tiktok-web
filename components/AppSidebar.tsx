@@ -22,13 +22,13 @@ import {
 } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { useAuthService } from "@/services/authService";
-import { ChevronsUpDown, Clapperboard, LayoutDashboard, Link2, LogOut } from "lucide-react";
+import { ChevronsUpDown, Clapperboard, Link2, LogOut, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 const navItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Renderizados", url: "/rendered-videos", icon: Clapperboard },
+  { title: "Estúdio", url: "/studio", icon: Sparkles },
+  { title: "Vídeos", url: "/videos", icon: Clapperboard },
   { title: "Integrações", url: "/integrations", icon: Link2 },
 ];
 
