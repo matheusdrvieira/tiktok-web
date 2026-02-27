@@ -44,7 +44,7 @@ export default function Integrations() {
     return integrations.some(
       (integration) =>
         integration.provider === providerByPlatform[platform] &&
-        integration.isActive === true,
+        integration.isActive === true
     );
   };
 
@@ -107,7 +107,7 @@ export default function Integrations() {
                           ? "Conectando..."
                           : platform.id === "youtube" && isConnectingYoutube
                             ? "Conectando..."
-                          : "Conectar via OAuth"}
+                            : "Conectar via OAuth"}
                     </Button>
                   ) : (
                     <Button
