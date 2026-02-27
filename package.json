@@ -10,7 +10,7 @@
     "remotion:render": "remotion render",
     "remotion:studio": "remotion studio components/remotion/entry.ts --port 3004 --no-open",
     "remotion:bundle": "remotion bundle components/remotion/entry.ts",
-    "remotion:serve": "bun run remotion:bundle && python3 -m http.server 3004 --directory build"
+    "remotion:serve": "bun run remotion:bundle && npx --yes serve -s build -l ${PORT:-3004}"
   },
   "dependencies": {
     "@base-ui/react": "^1.2.0",
