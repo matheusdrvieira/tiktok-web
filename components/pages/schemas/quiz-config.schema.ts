@@ -6,7 +6,7 @@ export const quizConfigFormSchema = z.object({
     .trim()
     .min(1, "Informe o nicho."),
   reference: z.string().trim(),
-  questionsCount: z.coerce
+  questionsCount: z
     .number()
     .int("Use um numero inteiro.")
     .min(4, "Minimo de 4 perguntas.")

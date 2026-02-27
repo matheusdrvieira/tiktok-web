@@ -339,7 +339,7 @@ export default function Studio() {
                       type="number"
                       min={4}
                       max={10}
-                      {...quizConfigForm.register("questionsCount")}
+                      {...quizConfigForm.register("questionsCount", { valueAsNumber: true })}
                       className="h-8 text-sm"
                     />
                     {quizConfigForm.formState.errors.questionsCount && (
