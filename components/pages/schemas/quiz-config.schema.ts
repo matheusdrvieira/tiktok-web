@@ -10,7 +10,7 @@ export const quizConfigFormSchema = z.object({
     .number()
     .int("Use um numero inteiro.")
     .min(4, "Minimo de 4 perguntas.")
-    .max(10, "Maximo de 10 perguntas."),
+    .max(10, "Maximo de 10 perguntas.")
 });
 
 export type QuizConfigFormValues = z.infer<typeof quizConfigFormSchema>;

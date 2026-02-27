@@ -24,6 +24,7 @@ export const useTikTokService = () => {
       const { data } = await api.get("/tiktok/post/creator-info");
       return data;
     },
+    enabled: false,
   });
 
   const publishTikTok = useMutation({
