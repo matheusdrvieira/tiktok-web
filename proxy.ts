@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
 
-const PUBLIC_ROUTES = new Set(["/terms", "/privacy"]);
+const PUBLIC_ROUTES = new Set(["/", "/terms", "/privacy"]);
 const APP_ROUTES = [
   "/studio",
   "/videos",
@@ -112,7 +112,6 @@ export async function proxy(request: NextRequest) {
   const requiresAuthCheck =
     pathname === LOGIN_ROUTE ||
     pathname === ONBOARDING_ROUTE ||
-    pathname === "/" ||
     isAppRoute(pathname);
 
   if (!requiresAuthCheck) {
@@ -132,7 +131,7 @@ export async function proxy(request: NextRequest) {
 
   const hasActiveIntegration = await getHasActiveIntegration(request);
 
-  if (pathname === LOGIN_ROUTE || pathname === "/") {
+  if (pathname === LOGIN_ROUTE) {
     return redirectTo(
       request,
       hasActiveIntegration ? "/studio" : ONBOARDING_ROUTE,
