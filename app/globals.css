@@ -89,4 +89,36 @@
   .focus-ring-orange {
     @apply focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
   }
+
+  .scrollbar-app {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.75) hsl(var(--muted) / 0.35);
+  }
+
+  .scrollbar-app::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .scrollbar-app::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.25);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-app::-webkit-scrollbar-thumb {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 0.9) 0%,
+      hsl(var(--primary) / 0.65) 100%
+    );
+    border: 2px solid hsl(var(--card));
+    border-radius: 9999px;
+  }
+
+  .scrollbar-app::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(
+      180deg,
+      hsl(var(--primary) / 1) 0%,
+      hsl(var(--primary) / 0.8) 100%
+    );
+  }
 }
