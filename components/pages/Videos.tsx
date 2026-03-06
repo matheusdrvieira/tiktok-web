@@ -157,6 +157,18 @@ export default function Videos() {
     useWatch({ control: publishForm.control, name: "brandContentToggle" }) ?? false;
   const watchedContentDisclosureAccepted =
     useWatch({ control: publishForm.control, name: "contentDisclosureAccepted" }) ?? false;
+  const hasBrandOrganicDisclosure =
+    watchedContentDisclosureEnabled && watchedBrandOrganicToggle;
+  const hasBrandContentDisclosure =
+    watchedContentDisclosureEnabled && watchedBrandContentToggle;
+  const disclosureSelectionReady =
+    !watchedContentDisclosureEnabled || hasBrandOrganicDisclosure || hasBrandContentDisclosure;
+  const requiresBrandedContentTerms = hasBrandContentDisclosure;
+  const disclosureLabelMessage = hasBrandContentDisclosure
+    ? "Sua foto/vídeo será rotulado como \"Parceria paga\"."
+    : hasBrandOrganicDisclosure
+      ? "Sua foto/vídeo será rotulado como \"Conteúdo promocional\"."
+      : null;
 
   const isVideoDurationAboveTikTokLimit = useMemo(() => {
     if (
@@ -291,7 +303,8 @@ export default function Videos() {
     ) {
       toast({
         title: "Divulgação incompleta",
-        description: "Selecione 'Sua marca' ou 'Conteúdo de marca' para continuar.",
+        description:
+          "Você precisa indicar se o seu conteúdo promove você mesmo, terceiros ou ambos.",
         variant: "destructive",
       });
       return;
@@ -312,6 +325,17 @@ export default function Videos() {
     }
 
     if (!creatorInfo) {
+      return;
+    }
+
+    if (!creatorInfo.canPost) {
+      toast({
+        title: "Publicação indisponível no momento",
+        description:
+          creatorInfo.canPostErrorMessage ??
+          "Sua conta não pode publicar agora. Tente novamente mais tarde.",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -427,15 +451,12 @@ export default function Videos() {
     tikTokCreatorInfo &&
     tikTokCreatorInfo.privacyLevelOptions.includes(watchedPrivacyLevel),
   );
-  const disclosureSelectionReady =
-    !watchedContentDisclosureEnabled || watchedBrandOrganicToggle || watchedBrandContentToggle;
-  const requiresBrandedContentTerms =
-    watchedContentDisclosureEnabled && watchedBrandContentToggle;
   const selectedPrivacyValue = tikTokPrivacyReady ? watchedPrivacyLevel : null;
   const canPublishTikTok =
     isTikTokConnected &&
     !getCreatorInfo.isFetching &&
     Boolean(tikTokCreatorInfo) &&
+    tikTokCreatorInfo?.canPost !== false &&
     Boolean(watchedTikTokCaption.trim()) &&
     tikTokPrivacyReady &&
     disclosureSelectionReady &&
@@ -670,27 +691,35 @@ export default function Videos() {
                           Carregando dados do criador...
                         </p>
                       ) : tikTokCreatorInfo ? (
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="size-10">
-                              <AvatarImage
-                                src={tikTokCreatorInfo.creatorAvatarUrl}
-                                alt={creatorDisplayName}
-                              />
-                              <AvatarFallback>
-                                {creatorDisplayName.slice(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <p className="text-sm font-medium">{creatorDisplayName}</p>
-                              <p className="text-xs text-muted-foreground">
-                                @{tikTokCreatorInfo.creatorUsername}
-                              </p>
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="size-10">
+                                <AvatarImage
+                                  src={tikTokCreatorInfo.creatorAvatarUrl}
+                                  alt={creatorDisplayName}
+                                />
+                                <AvatarFallback>
+                                  {creatorDisplayName.slice(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="text-sm font-medium">{creatorDisplayName}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  @{tikTokCreatorInfo.creatorUsername}
+                                </p>
+                              </div>
                             </div>
+                            <p className="text-xs text-muted-foreground">
+                              Duração máxima: {formatSecondsToMinutes(tikTokCreatorInfo.maxVideoPostDurationSec)}
+                            </p>
                           </div>
-                          <p className="text-xs text-muted-foreground">
-                            Duração máxima: {formatSecondsToMinutes(tikTokCreatorInfo.maxVideoPostDurationSec)}
-                          </p>
+                          {!tikTokCreatorInfo.canPost ? (
+                            <p className="text-xs text-destructive">
+                              {tikTokCreatorInfo.canPostErrorMessage ??
+                                "Esta conta não pode publicar no TikTok agora. Tente novamente mais tarde."}
+                            </p>
+                          ) : null}
                         </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">
@@ -858,8 +887,11 @@ export default function Videos() {
                           </label>
                           {!disclosureSelectionReady ? (
                             <p className="text-xs text-destructive">
-                              Selecione ao menos uma opção de divulgação.
+                              Você precisa indicar se o seu conteúdo promove você mesmo, terceiros ou ambos.
                             </p>
+                          ) : null}
+                          {disclosureLabelMessage ? (
+                            <p className="text-xs text-muted-foreground">{disclosureLabelMessage}</p>
                           ) : null}
                         </div>
                       ) : null}
