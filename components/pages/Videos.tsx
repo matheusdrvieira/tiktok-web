@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useIntegrationsService } from "@/services/integrationsService";
@@ -42,7 +43,7 @@ import {
   Send,
   Youtube,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { z } from "zod";
 
@@ -70,6 +71,15 @@ const TIKTOK_PRIVACY_LEVEL_LABELS: Record<TikTokPrivacyLevel, string> = {
   FOLLOWER_OF_CREATOR: "Seguidores",
   SELF_ONLY: "Somente eu",
 };
+const TIKTOK_BRANDED_CONTENT_POLICY_URL = "https://www.tiktok.com/legal/bc-policy?lang=en";
+const TIKTOK_MUSIC_USAGE_CONFIRMATION_URL =
+  "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en";
+const COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE =
+  "Você precisa indicar se o seu conteúdo promove você, terceiros ou ambos.";
+const BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE =
+  "A visibilidade do conteúdo de marca não pode ser privada.";
+const TIKTOK_PROCESSING_NOTICE =
+  "Depois da publicação, o conteúdo pode levar alguns minutos para ser processado e aparecer no seu perfil.";
 
 const publishFormSchema = z.object({
   tiktokCaption: z
@@ -169,6 +179,15 @@ export default function Videos() {
     : hasBrandOrganicDisclosure
       ? "Sua foto/vídeo será rotulado como \"Conteúdo promocional\"."
       : null;
+  const isPrivateVisibilitySelected = watchedPrivacyLevel === "SELF_ONLY";
+  const isBrandedContentBlockedByPrivateVisibility =
+    watchedContentDisclosureEnabled && isPrivateVisibilitySelected;
+  const showDisclosureSelectionTooltip =
+    activePublishTab === IntegrationProvider.TIKTOK &&
+    watchedContentDisclosureEnabled &&
+    !disclosureSelectionReady;
+  const showPrivateVisibilityTooltip =
+    watchedContentDisclosureEnabled && isPrivateVisibilitySelected;
 
   const isVideoDurationAboveTikTokLimit = useMemo(() => {
     if (
@@ -223,6 +242,24 @@ export default function Videos() {
 
     return response.data;
   };
+
+  useEffect(() => {
+    if (
+      !watchedContentDisclosureEnabled ||
+      watchedPrivacyLevel !== "SELF_ONLY" ||
+      !watchedBrandContentToggle
+    ) {
+      return;
+    }
+
+    publishForm.setValue("brandContentToggle", false, { shouldDirty: true });
+    publishForm.setValue("contentDisclosureAccepted", false, { shouldDirty: true });
+  }, [
+    publishForm,
+    watchedBrandContentToggle,
+    watchedContentDisclosureEnabled,
+    watchedPrivacyLevel,
+  ]);
 
   const handleOpenPublishDialog = (video: VideoOutput) => {
     if (!video.url) {
@@ -303,8 +340,7 @@ export default function Videos() {
     ) {
       toast({
         title: "Divulgação incompleta",
-        description:
-          "Você precisa indicar se o seu conteúdo promove você mesmo, terceiros ou ambos.",
+        description: COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE,
         variant: "destructive",
       });
       return;
@@ -372,7 +408,7 @@ export default function Videos() {
 
       toast({
         title: "Publicação enviada",
-        description: `TikTok ID: ${publishId ?? "-"}`,
+        description: `TikTok ID: ${publishId ?? "-"} • ${TIKTOK_PROCESSING_NOTICE}`,
       });
 
       setIsPublishDialogOpen(false);
@@ -476,6 +512,14 @@ export default function Videos() {
     tikTokCreatorInfo?.creatorNickname ||
     tikTokCreatorInfo?.creatorUsername ||
     "Conta TikTok";
+  const publishActionLabel =
+    activePublishTab === IntegrationProvider.TIKTOK
+      ? "Publicar no TikTok"
+      : "Publicar no YouTube";
+  const publishLoadingLabel =
+    activePublishTab === IntegrationProvider.TIKTOK
+      ? "Publicando no TikTok..."
+      : "Enviando para YouTube...";
 
   return (
     <div className="space-y-6">
@@ -752,7 +796,12 @@ export default function Videos() {
                         render={({ field }) => (
                           <Select
                             value={selectedPrivacyValue ?? undefined}
-                            onValueChange={(value) => field.onChange(value as TikTokPrivacyLevel)}
+                            onValueChange={(value) => {
+                              field.onChange(value as TikTokPrivacyLevel);
+                              publishForm.setValue("contentDisclosureAccepted", false, {
+                                shouldDirty: true,
+                              });
+                            }}
                             disabled={
                               isPublishingAny ||
                               getCreatorInfo.isFetching ||
@@ -764,7 +813,11 @@ export default function Videos() {
                             </SelectTrigger>
                             <SelectContent>
                               {(tikTokCreatorInfo?.privacyLevelOptions ?? []).map((option) => (
-                                <SelectItem key={option} value={option}>
+                                <SelectItem
+                                  key={option}
+                                  value={option}
+                                  disabled={option === "SELF_ONLY" && hasBrandContentDisclosure}
+                                >
                                   {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
                                 </SelectItem>
                               ))}
@@ -772,10 +825,15 @@ export default function Videos() {
                           </Select>
                         )}
                       />
+                      {hasBrandContentDisclosure ? (
+                        <p className="text-xs text-muted-foreground">
+                          {BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
-                      <p className="text-sm font-medium">Permitir usuários</p>
+                      <p className="text-sm font-medium">Permitir interações</p>
                       <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
                         <label
                           className={cn(
@@ -854,7 +912,7 @@ export default function Videos() {
                         Conteúdo promocional
                       </label>
                       <p className="text-xs text-muted-foreground">
-                        Ative se o vídeo promove bens, serviços ou outra marca/terceiro.
+                        Ative se o vídeo promove bens, serviços, outra marca ou terceiros.
                       </p>
 
                       {watchedContentDisclosureEnabled ? (
@@ -872,26 +930,54 @@ export default function Videos() {
                             />
                             Sua marca
                           </label>
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              className="size-4 accent-primary"
-                              checked={watchedBrandContentToggle}
-                              onChange={(event) => {
-                                publishForm.setValue("brandContentToggle", event.target.checked, { shouldDirty: true });
-                                publishForm.setValue("contentDisclosureAccepted", false, { shouldDirty: true });
-                              }}
-                              disabled={isPublishingAny}
-                            />
-                            Conteúdo de marca
-                          </label>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="inline-flex w-fit">
+                                <label
+                                  className={cn(
+                                    "flex items-center gap-2 text-sm",
+                                    isBrandedContentBlockedByPrivateVisibility &&
+                                      "cursor-not-allowed text-muted-foreground",
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="size-4 accent-primary"
+                                    checked={watchedBrandContentToggle}
+                                    onChange={(event) => {
+                                      publishForm.setValue("brandContentToggle", event.target.checked, {
+                                        shouldDirty: true,
+                                      });
+                                      publishForm.setValue("contentDisclosureAccepted", false, {
+                                        shouldDirty: true,
+                                      });
+                                    }}
+                                    disabled={
+                                      isPublishingAny || isBrandedContentBlockedByPrivateVisibility
+                                    }
+                                  />
+                                  Conteúdo de marca
+                                </label>
+                              </span>
+                            </TooltipTrigger>
+                            {showPrivateVisibilityTooltip ? (
+                              <TooltipContent side="top">
+                                <p>{BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}</p>
+                              </TooltipContent>
+                            ) : null}
+                          </Tooltip>
                           {!disclosureSelectionReady ? (
                             <p className="text-xs text-destructive">
-                              Você precisa indicar se o seu conteúdo promove você mesmo, terceiros ou ambos.
+                              {COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}
                             </p>
                           ) : null}
                           {disclosureLabelMessage ? (
                             <p className="text-xs text-muted-foreground">{disclosureLabelMessage}</p>
+                          ) : null}
+                          {isBrandedContentBlockedByPrivateVisibility ? (
+                            <p className="text-xs text-muted-foreground">
+                              {BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}
+                            </p>
                           ) : null}
                         </div>
                       ) : null}
@@ -905,8 +991,9 @@ export default function Videos() {
                       </p>
                     ) : null}
 
-                    <label className="flex items-start gap-2 text-sm">
+                    <div className="flex items-start gap-2 text-sm">
                       <input
+                        id="tiktok-compliance-consent"
                         type="checkbox"
                         className="mt-0.5 size-4 accent-primary"
                         checked={watchedContentDisclosureAccepted}
@@ -915,14 +1002,54 @@ export default function Videos() {
                         }
                         disabled={isPublishingAny}
                       />
-                      <span className="text-muted-foreground">
-                        Confirmo que revisei as configurações de privacidade, interações e
-                        conteúdo conforme as regras do TikTok antes de publicar.{" "}
-                        {requiresBrandedContentTerms
-                          ? "Ao publicar, concordo com a Política de Conteúdo de Marca (Branded Content Policy) e com a Confirmação de Uso de Música (Music Usage Confirmation)."
-                          : "Ao publicar, concordo com a Confirmação de Uso de Música (Music Usage Confirmation)."}
-                      </span>
-                    </label>
+                      <div className="space-y-1">
+                        <label
+                          htmlFor="tiktok-compliance-consent"
+                          className="text-muted-foreground"
+                        >
+                          Confirmo que revisei as configurações de privacidade, interações e
+                          conteúdo conforme as regras do TikTok antes de publicar.
+                        </label>
+                        <p className="text-muted-foreground">
+                          {requiresBrandedContentTerms ? (
+                            <>
+                              Ao publicar, você concorda com a{" "}
+                              <a
+                                href={TIKTOK_BRANDED_CONTENT_POLICY_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline underline-offset-2 hover:text-foreground"
+                              >
+                                Política de Conteúdo de Marca do TikTok
+                              </a>{" "}
+                              e com a{" "}
+                              <a
+                                href={TIKTOK_MUSIC_USAGE_CONFIRMATION_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline underline-offset-2 hover:text-foreground"
+                              >
+                                Confirmação de Uso de Música do TikTok
+                              </a>
+                              .
+                            </>
+                          ) : (
+                            <>
+                              Ao publicar, você concorda com a{" "}
+                              <a
+                                href={TIKTOK_MUSIC_USAGE_CONFIRMATION_URL}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="underline underline-offset-2 hover:text-foreground"
+                              >
+                                Confirmação de Uso de Música do TikTok
+                              </a>
+                              .
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    </div>
                   </>
                 )}
               </div>
@@ -946,30 +1073,42 @@ export default function Videos() {
               </div>
             )}
 
-            <Button
-              className="h-11 rounded-xl"
-              onClick={handlePublishActiveTab}
-              disabled={isPublishingAny || !canPublishActiveTab}
-            >
-              {isPublishingAny ? (
-                <>
-                  {activePublishTab === IntegrationProvider.TIKTOK
-                    ? "Publicando no TikTok..."
-                    : "Enviando para YouTube..."}
-                  <Loader2 className="ml-2 size-4 animate-spin" />
-                </>
-              ) : (
-                <>
-                  {activePublishTab === IntegrationProvider.TIKTOK
-                    ? "Publicar no TikTok"
-                    : "Publicar no YouTube"}
-                  <Send className="ml-2 size-4" />
-                </>
-              )}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="block"
+                  title={showDisclosureSelectionTooltip ? COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE : undefined}
+                >
+                  <Button
+                    className="h-11 w-full rounded-xl"
+                    onClick={handlePublishActiveTab}
+                    disabled={isPublishingAny || !canPublishActiveTab}
+                  >
+                    {isPublishingAny ? (
+                      <>
+                        {publishLoadingLabel}
+                        <Loader2 className="ml-2 size-4 animate-spin" />
+                      </>
+                    ) : (
+                      <>
+                        {publishActionLabel}
+                        <Send className="ml-2 size-4" />
+                      </>
+                    )}
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {showDisclosureSelectionTooltip ? (
+                <TooltipContent side="top">
+                  <p>{COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}</p>
+                </TooltipContent>
+              ) : null}
+            </Tooltip>
 
             <p className="text-center text-xs text-muted-foreground">
-              O modal permanece aberto enquanto o envio estiver em andamento.
+              {activePublishTab === IntegrationProvider.TIKTOK
+                ? TIKTOK_PROCESSING_NOTICE
+                : "O modal permanece aberto enquanto o envio estiver em andamento."}
             </p>
           </div>
         </DialogContent>
