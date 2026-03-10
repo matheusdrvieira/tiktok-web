@@ -812,15 +812,35 @@ export default function Videos() {
                               <SelectValue placeholder="Selecione a privacidade" />
                             </SelectTrigger>
                             <SelectContent>
-                              {(tikTokCreatorInfo?.privacyLevelOptions ?? []).map((option) => (
-                                <SelectItem
-                                  key={option}
-                                  value={option}
-                                  disabled={option === "SELF_ONLY" && hasBrandContentDisclosure}
-                                >
-                                  {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
-                                </SelectItem>
-                              ))}
+                              {(tikTokCreatorInfo?.privacyLevelOptions ?? []).map((option) => {
+                                const isPrivateOptionBlocked =
+                                  option === "SELF_ONLY" && hasBrandContentDisclosure;
+
+                                if (!isPrivateOptionBlocked) {
+                                  return (
+                                    <SelectItem key={option} value={option}>
+                                      {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
+                                    </SelectItem>
+                                  );
+                                }
+
+                                return (
+                                  <Tooltip key={option}>
+                                    <TooltipTrigger asChild>
+                                      <SelectItem
+                                        value={option}
+                                        disabled
+                                        className="data-[disabled]:pointer-events-auto"
+                                      >
+                                        {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
+                                      </SelectItem>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" align="start" sideOffset={8}>
+                                      <p>{BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                );
+                              })}
                             </SelectContent>
                           </Select>
                         )}
