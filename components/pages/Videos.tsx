@@ -80,6 +80,14 @@ const BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE =
   "A visibilidade do conteúdo de marca não pode ser privada.";
 const TIKTOK_PROCESSING_NOTICE =
   "Depois da publicação, o conteúdo pode levar alguns minutos para ser processado e aparecer no seu perfil.";
+const DISCLOSURE_TOGGLE_DESCRIPTION =
+  "Ative para informar que este vídeo promove bens ou serviços em troca de algo de valor. O vídeo pode promover você, terceiros ou ambos.";
+const DISCLOSURE_LOCKED_LABEL_NOTE =
+  "Esse rótulo não poderá ser alterado depois que o vídeo for publicado.";
+const BRAND_ORGANIC_DESCRIPTION =
+  "Você está promovendo você ou o seu próprio negócio. Este vídeo será classificado como Conteúdo Orgânico de Marca.";
+const BRAND_CONTENT_DESCRIPTION =
+  "Você está promovendo outra marca ou um terceiro. Este vídeo será classificado como Conteúdo de Marca.";
 
 const publishFormSchema = z.object({
   tiktokCaption: z
@@ -179,7 +187,10 @@ export default function Videos() {
     : hasBrandOrganicDisclosure
       ? "Sua foto/vídeo será rotulado como \"Conteúdo promocional\"."
       : null;
+  const showDisclosureSummary =
+    watchedContentDisclosureEnabled && disclosureSelectionReady && Boolean(disclosureLabelMessage);
   const isPrivateVisibilitySelected = watchedPrivacyLevel === "SELF_ONLY";
+  const areInteractionsBlockedByPrivacy = isPrivateVisibilitySelected;
   const isBrandedContentBlockedByPrivateVisibility =
     watchedContentDisclosureEnabled && isPrivateVisibilitySelected;
   const showDisclosureSelectionTooltip =
@@ -260,6 +271,16 @@ export default function Videos() {
     watchedContentDisclosureEnabled,
     watchedPrivacyLevel,
   ]);
+
+  useEffect(() => {
+    if (!areInteractionsBlockedByPrivacy) {
+      return;
+    }
+
+    publishForm.setValue("allowComment", false, { shouldDirty: true });
+    publishForm.setValue("allowDuet", false, { shouldDirty: true });
+    publishForm.setValue("allowStitch", false, { shouldDirty: true });
+  }, [areInteractionsBlockedByPrivacy, publishForm]);
 
   const handleOpenPublishDialog = (video: VideoOutput) => {
     if (!video.url) {
@@ -504,9 +525,15 @@ export default function Videos() {
       ? canPublishTikTok
       : canPublishYoutube;
 
-  const canEnableComment = Boolean(tikTokCreatorInfo && !tikTokCreatorInfo.commentDisabled);
-  const canEnableDuet = Boolean(tikTokCreatorInfo && !tikTokCreatorInfo.duetDisabled);
-  const canEnableStitch = Boolean(tikTokCreatorInfo && !tikTokCreatorInfo.stitchDisabled);
+  const canEnableComment = Boolean(
+    tikTokCreatorInfo && !tikTokCreatorInfo.commentDisabled && !areInteractionsBlockedByPrivacy,
+  );
+  const canEnableDuet = Boolean(
+    tikTokCreatorInfo && !tikTokCreatorInfo.duetDisabled && !areInteractionsBlockedByPrivacy,
+  );
+  const canEnableStitch = Boolean(
+    tikTokCreatorInfo && !tikTokCreatorInfo.stitchDisabled && !areInteractionsBlockedByPrivacy,
+  );
 
   const creatorDisplayName =
     tikTokCreatorInfo?.creatorNickname ||
@@ -909,6 +936,12 @@ export default function Videos() {
                           Stitch
                         </label>
                       </div>
+                      {areInteractionsBlockedByPrivacy ? (
+                        <p className="text-xs text-muted-foreground">
+                          Publicações com visibilidade "Somente eu" não permitem comentários,
+                          duetos ou stitch.
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -932,11 +965,21 @@ export default function Videos() {
                         Conteúdo promocional
                       </label>
                       <p className="text-xs text-muted-foreground">
-                        Ative se o vídeo promove bens, serviços, outra marca ou terceiros.
+                        {DISCLOSURE_TOGGLE_DESCRIPTION}
                       </p>
 
                       {watchedContentDisclosureEnabled ? (
                         <div className="space-y-2 rounded-md border border-border/60 bg-background/70 p-3">
+                          {showDisclosureSummary ? (
+                            <div className="rounded-md border border-sky-500/20 bg-sky-500/10 px-3 py-2">
+                              <p className="text-xs font-medium text-sky-100">
+                                {disclosureLabelMessage}
+                              </p>
+                              <p className="mt-1 text-xs text-sky-100/80">
+                                {DISCLOSURE_LOCKED_LABEL_NOTE}
+                              </p>
+                            </div>
+                          ) : null}
                           <label className="flex items-center gap-2 text-sm">
                             <input
                               type="checkbox"
@@ -950,6 +993,9 @@ export default function Videos() {
                             />
                             Sua marca
                           </label>
+                          <p className="pl-6 text-xs text-muted-foreground">
+                            {BRAND_ORGANIC_DESCRIPTION}
+                          </p>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="inline-flex w-fit">
@@ -986,13 +1032,13 @@ export default function Videos() {
                               </TooltipContent>
                             ) : null}
                           </Tooltip>
+                          <p className="pl-6 text-xs text-muted-foreground">
+                            {BRAND_CONTENT_DESCRIPTION}
+                          </p>
                           {!disclosureSelectionReady ? (
                             <p className="text-xs text-destructive">
                               {COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}
                             </p>
-                          ) : null}
-                          {disclosureLabelMessage ? (
-                            <p className="text-xs text-muted-foreground">{disclosureLabelMessage}</p>
                           ) : null}
                           {isBrandedContentBlockedByPrivateVisibility ? (
                             <p className="text-xs text-muted-foreground">
