@@ -12,7 +12,23 @@ const toFrames = (seconds: number, fps: number): number => {
   return Math.ceil(seconds * fps);
 };
 
+const STATIC_AUDIO_DURATIONS_IN_SECONDS: Record<string, number> = {
+  "answer_correct.wav": 1.8800680272108843,
+  "clock.mp3": 8.064,
+  "quiz-loop.mp3": 125.23102040816326,
+};
+
+const getStaticAudioDurationInSeconds = (src: string): number | null => {
+  const normalizedSrc = src.replace(/^\/+/, "").replace(/^public\//, "");
+  return STATIC_AUDIO_DURATIONS_IN_SECONDS[normalizedSrc] ?? null;
+};
+
 const getDurationInSecondsForAudio = async (src: string): Promise<number> => {
+  const staticDurationInSeconds = getStaticAudioDurationInSeconds(src);
+  if (staticDurationInSeconds !== null) {
+    return staticDurationInSeconds;
+  }
+
   const audioSrc = src.startsWith("/")
     ? staticFile(src.replace(/^\/+/, ""))
     : src;
