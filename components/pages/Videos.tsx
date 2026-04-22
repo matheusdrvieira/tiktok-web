@@ -938,7 +938,7 @@ export default function Videos() {
                       </div>
                       {areInteractionsBlockedByPrivacy ? (
                         <p className="text-xs text-muted-foreground">
-                          Publicações com visibilidade "Somente eu" não permitem comentários,
+                          Publicações com visibilidade &quot;Somente eu&quot; não permitem comentários,
                           duetos ou stitch.
                         </p>
                       ) : null}

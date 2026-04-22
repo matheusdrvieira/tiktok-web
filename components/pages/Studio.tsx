@@ -28,9 +28,11 @@ import { useIntegrationsService } from "@/services/integrationsService";
 import { useQuizzesService } from "@/services/quizzesService";
 import { useVideosService } from "@/services/videosService";
 import type { GenerateQuizOutput, QuizOutput } from "@/types/quizzes";
+import { RenderJobStatusEnum } from "@/types/videos";
 import { sanitizeHashtags } from "@/utils/sanitize-hashtags";
 import { toHashtagsArray } from "@/utils/to-hashtags-array";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQueryClient } from "@tanstack/react-query";
 import { Film, Play, Save, Settings2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
@@ -57,11 +59,13 @@ const CATEGORY_OPTIONS = [
 
 export default function Studio() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   useIntegrationsService();
   const { getLatestQuiz, generateQuiz } = useQuizzesService();
-  const { renderVideo, updateVideo } = useVideosService();
   const [quiz, setQuiz] = useState<GenerateQuizOutput | null>(null);
   const [currentVideoId, setCurrentVideoId] = useState<string | null>(null);
+  const [renderJobId, setRenderJobId] = useState<string | null>(null);
+  const { renderVideo, renderVideoJob, updateVideo } = useVideosService(renderJobId);
 
   const quizConfigForm = useForm<QuizConfigFormValues>({
     resolver: zodResolver(quizConfigFormSchema),
@@ -98,6 +102,7 @@ export default function Studio() {
 
   const [videoPath, setVideoPath] = useState("");
   const [isRendering, setIsRendering] = useState(false);
+  const renderJob = renderVideoJob.data?.job;
 
   useEffect(() => {
     if (!getLatestQuiz.data) {
@@ -114,6 +119,7 @@ export default function Studio() {
     }
 
     setCurrentVideoId(latestVideo.id);
+    setVideoPath(latestVideo.url ?? "");
 
     setQuiz({
       title: latestVideo?.title ?? "Quiz",
@@ -138,6 +144,44 @@ export default function Studio() {
     });
     setIsGenerated(true);
   }, [getLatestQuiz.data]);
+
+  useEffect(() => {
+    if (!renderJob || !isRendering) {
+      return;
+    }
+
+    if (renderJob.status === RenderJobStatusEnum.SUCCEEDED) {
+      if (renderJob.resultUrl) {
+        setVideoPath(renderJob.resultUrl);
+      }
+
+      setIsRendering(false);
+      setRenderJobId(null);
+
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["videos"] }),
+        queryClient.invalidateQueries({ queryKey: ["quizzes"] }),
+        queryClient.invalidateQueries({ queryKey: ["quizzes", "latest"] }),
+      ]);
+
+      toast({
+        title: "Vídeo pronto",
+        description: "Pré-renderização concluída.",
+      });
+      return;
+    }
+
+    if (renderJob.status === RenderJobStatusEnum.FAILED) {
+      setIsRendering(false);
+      setRenderJobId(null);
+
+      toast({
+        title: "Erro ao pre-renderizar",
+        description: renderJob.error || "Não foi possível renderizar o vídeo.",
+        variant: "destructive",
+      });
+    }
+  }, [isRendering, queryClient, renderJob, toast]);
 
   const previewProps = useMemo(() => {
     if (!isGenerated || !quiz) {
@@ -267,27 +311,24 @@ export default function Studio() {
     setIsRendering(true);
 
     try {
-      const { video } = await renderVideo.mutateAsync({
+      const { job } = await renderVideo.mutateAsync({
         videoId: currentVideoId,
         questions: previewProps.questions,
       });
 
-      if (video?.url) {
-        setVideoPath(video.url);
-      }
+      setRenderJobId(job.id);
 
       toast({
-        title: "Vídeo pronto",
-        description: "Pré-renderização concluída.",
+        title: "Renderização iniciada",
+        description: "Você pode acompanhar o progresso enquanto o vídeo é gerado.",
       });
     } catch {
+      setIsRendering(false);
       toast({
         title: "Erro ao pre-renderizar",
         description: "Não foi possível renderizar o vídeo.",
         variant: "destructive",
       });
-    } finally {
-      setIsRendering(false);
     }
   };
 
@@ -497,10 +538,14 @@ export default function Studio() {
                 size="sm"
                 className="hover:bg-background hover:text-foreground hover:brightness-110"
                 onClick={handlePreRender}
-                disabled={!isGenerated || renderVideo.isPending}
+                disabled={!isGenerated || renderVideo.isPending || isRendering}
               >
                 <Film className="mr-1.5 size-3.5" />
-                {renderVideo.isPending ? "Renderizando..." : "Renderizar"}
+                {isRendering
+                  ? "Renderizando..."
+                  : renderVideo.isPending
+                    ? "Iniciando..."
+                    : "Renderizar"}
               </Button>
             </div>
           </CardContent>

@@ -53,23 +53,38 @@ const getCurrentStageIndex = (elapsedMs: number): number => {
 };
 
 export function VideoRenderDialog({ open }: VideoRenderDialogProps) {
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [startedAtMs, setStartedAtMs] = useState<number | null>(null);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     if (!open) {
-      setElapsedMs(0);
-      return;
+      const resetTimeoutId = window.setTimeout(() => {
+        setStartedAtMs(null);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(resetTimeoutId);
+      };
     }
 
     const startedAt = Date.now();
+    const startTimeoutId = window.setTimeout(() => {
+      setStartedAtMs(startedAt);
+      setNowMs(startedAt);
+    }, 0);
+
     const intervalId = window.setInterval(() => {
-      setElapsedMs(Date.now() - startedAt);
+      setNowMs(Date.now());
     }, 250);
 
     return () => {
+      window.clearTimeout(startTimeoutId);
       window.clearInterval(intervalId);
     };
   }, [open]);
+
+  const elapsedMs =
+    open && startedAtMs ? nowMs - startedAtMs : 0;
 
   const currentStageIndex = useMemo(
     () => getCurrentStageIndex(elapsedMs),

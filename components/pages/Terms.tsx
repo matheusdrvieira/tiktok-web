@@ -30,14 +30,14 @@ export default function Terms() {
             qualquer finalidade comercial ou para exibição pública (comercial ou não comercial);
             tentar descompilar ou fazer engenharia reversa de qualquer software contido no site
             Quizzio; remover quaisquer direitos autorais ou outras notações de propriedade dos
-            materiais; ou transferir os materiais para outra pessoa ou "espelhar" os materiais em
+            materiais; ou transferir os materiais para outra pessoa ou &quot;espelhar&quot; os materiais em
             qualquer outro servidor. Esta licença será automaticamente rescindida se você violar
             alguma dessas restrições e poderá ser rescindida por Quizzio a qualquer momento. Ao
             encerrar a visualização desses materiais ou após o término desta licença, você deve
             apagar todos os materiais baixados em sua posse, seja em formato eletrónico ou
             impresso.</p>
           <p><strong className="text-foreground">3. Isenção de Responsabilidade</strong><br />
-            Os materiais no site da Quizzio são fornecidos "como estão". Quizzio não oferece
+            Os materiais no site da Quizzio são fornecidos &quot;como estão&quot;. Quizzio não oferece
             garantias, expressas ou implícitas, e, por este meio, isenta e nega todas as outras
             garantias, incluindo, sem limitação, garantias implícitas ou condições de
             comercialização, adequação a um fim específico ou não violação de propriedade

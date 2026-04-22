@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  RenderJobStatusOutput,
   RenderVideoInput,
   RenderVideoOutput,
   UpdateVideoInput,
@@ -10,7 +11,9 @@ import type {
 import { api } from "@/utils/axios";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-export const useVideosService = () => {
+const ACTIVE_RENDER_JOB_STATUSES = ["QUEUED", "RUNNING"];
+
+export const useVideosService = (renderJobId?: string | null) => {
   const queryClient = useQueryClient();
 
   const listVideos = useQuery({
@@ -26,14 +29,22 @@ export const useVideosService = () => {
       payload: RenderVideoInput,
     ): Promise<RenderVideoOutput> => {
       const { data } = await api.post("/remotion/render", payload, {
-        timeout: 0,
+        timeout: 30_000,
       });
       return data;
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["videos"],
-      });
+  });
+
+  const renderVideoJob = useQuery({
+    queryKey: ["render-video-job", renderJobId],
+    enabled: Boolean(renderJobId),
+    queryFn: async (): Promise<RenderJobStatusOutput> => {
+      const { data } = await api.get(`/remotion/render/${renderJobId}`);
+      return data;
+    },
+    refetchInterval: (query) => {
+      const status = query.state.data?.job.status;
+      return status && ACTIVE_RENDER_JOB_STATUSES.includes(status) ? 3_000 : false;
     },
   });
 
@@ -60,6 +71,7 @@ export const useVideosService = () => {
   return {
     listVideos,
     renderVideo,
+    renderVideoJob,
     updateVideo,
   };
 };

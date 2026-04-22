@@ -6,6 +6,13 @@ export enum VideoStatusEnum {
   PUBLISHED = "PUBLISHED",
 }
 
+export enum RenderJobStatusEnum {
+  QUEUED = "QUEUED",
+  RUNNING = "RUNNING",
+  SUCCEEDED = "SUCCEEDED",
+  FAILED = "FAILED",
+}
+
 export type VideoOutput = {
   id?: string;
   title: string;
@@ -28,23 +35,25 @@ export type RenderVideoInput = {
 
 export type RenderVideoOutput = {
   message: string;
+  job: RenderJobOutput;
+};
+
+export type RenderJobOutput = {
+  id: string;
+  userId: string;
+  videoId: string;
   templateId?: "comic-pop" | "neon-pulse" | "sunset-wave";
-  video: {
-    id: string;
-    userId: string;
-    title: string;
-    hashtags: string[];
-    description: string;
-    category: string;
-    quizId: string;
-    url: string;
-    size?: number;
-    duration?: number;
-    status: VideoStatusEnum;
-    createdAt?: string;
-    updatedAt?: string;
-    key?: string;
-  };
+  status: RenderJobStatusEnum;
+  error?: string;
+  resultKey?: string;
+  resultUrl?: string;
+  completedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type RenderJobStatusOutput = {
+  job: RenderJobOutput;
 };
 
 export type UpdateVideoInput = {
