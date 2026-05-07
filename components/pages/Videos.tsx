@@ -20,7 +20,11 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useIntegrationsService } from "@/services/integrationsService";
@@ -28,19 +32,29 @@ import { useTikTokService } from "@/services/tiktokService";
 import { useVideosService } from "@/services/videosService";
 import { useYoutubeService } from "@/services/youtubeService";
 import { IntegrationProvider } from "@/types/integrations";
-import type { TikTokCreatorInfoOutput, TikTokPrivacyLevel } from "@/types/tiktok";
+import type {
+  TikTokCreatorInfoOutput,
+  TikTokPrivacyLevel,
+} from "@/types/tiktok";
 import { VideoStatusEnum, type VideoOutput } from "@/types/videos";
 import { formatRenderedAt } from "@/utils/format-rendered-at";
 import { formatDuration, formatSize } from "@/utils/format-video-metadata";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  AlertCircle,
   CheckCircle2,
   Clock,
   Download,
   Film,
+  Info,
   Loader2,
+  MessageCircle,
   Music2,
+  RefreshCw,
+  Repeat2,
+  Scissors,
   Send,
+  ShieldCheck,
   Youtube,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -71,15 +85,26 @@ const TIKTOK_PRIVACY_LEVEL_LABELS: Record<TikTokPrivacyLevel, string> = {
   FOLLOWER_OF_CREATOR: "Seguidores",
   SELF_ONLY: "Somente eu",
 };
-const TIKTOK_BRANDED_CONTENT_POLICY_URL = "https://www.tiktok.com/legal/bc-policy?lang=en";
+const TIKTOK_BRANDED_CONTENT_PRIVACY_LEVELS = new Set<TikTokPrivacyLevel>([
+  "PUBLIC_TO_EVERYONE",
+  "MUTUAL_FOLLOW_FRIENDS",
+]);
+const TIKTOK_BRANDED_CONTENT_POLICY_URL =
+  "https://www.tiktok.com/legal/bc-policy?lang=en";
 const TIKTOK_MUSIC_USAGE_CONFIRMATION_URL =
   "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en";
 const COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE =
   "Você precisa indicar se o seu conteúdo promove você, terceiros ou ambos.";
 const BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE =
   "A visibilidade do conteúdo de marca não pode ser privada.";
+const BRANDED_CONTENT_PUBLIC_OR_FRIENDS_MESSAGE =
+  "Conteúdo de marca só pode usar visibilidade Público ou Amigos em comum.";
 const TIKTOK_PROCESSING_NOTICE =
   "Depois da publicação, o conteúdo pode levar alguns minutos para ser processado e aparecer no seu perfil.";
+const TIKTOK_PRIVACY_REQUIRED_INTERACTIONS_MESSAGE =
+  "Selecione quem pode assistir para habilitar as interações disponíveis.";
+const TIKTOK_PRIVATE_INTERACTIONS_MESSAGE =
+  'Com visibilidade "Somente eu", comentários, duetos e stitch ficam desligados.';
 const DISCLOSURE_TOGGLE_DESCRIPTION =
   "Ative para informar que este vídeo promove bens ou serviços em troca de algo de valor. O vídeo pode promover você, terceiros ou ambos.";
 const DISCLOSURE_LOCKED_LABEL_NOTE =
@@ -88,14 +113,29 @@ const BRAND_ORGANIC_DESCRIPTION =
   "Você está promovendo você ou o seu próprio negócio. Este vídeo será classificado como Conteúdo Orgânico de Marca.";
 const BRAND_CONTENT_DESCRIPTION =
   "Você está promovendo outra marca ou um terceiro. Este vídeo será classificado como Conteúdo de Marca.";
+const TIKTOK_PUBLISH_STATUS_LABELS: Record<string, string> = {
+  PROCESSING_UPLOAD: "Enviando arquivo ao TikTok",
+  PROCESSING_DOWNLOAD: "TikTok processando o arquivo",
+  SEND_TO_USER_INBOX: "Enviado para a caixa de entrada do criador",
+  PUBLISH_COMPLETE: "Publicado no TikTok",
+  FAILED: "Falha no processamento do TikTok",
+};
+const TIKTOK_CREATOR_DISABLED_INTERACTION_MESSAGE =
+  "Desativado nas configurações da conta TikTok.";
 
 const publishFormSchema = z.object({
   tiktokCaption: z
     .string()
     .trim()
     .min(1, "Informe a legenda do vídeo para publicar no TikTok.")
-    .max(TIKTOK_CAPTION_MAX_LENGTH, `A legenda do TikTok deve ter no máximo ${TIKTOK_CAPTION_MAX_LENGTH} caracteres.`),
-  youtubeTitle: z.string().trim().min(1, "Informe o título para enviar o vídeo ao YouTube."),
+    .max(
+      TIKTOK_CAPTION_MAX_LENGTH,
+      `A legenda do TikTok deve ter no máximo ${TIKTOK_CAPTION_MAX_LENGTH} caracteres.`,
+    ),
+  youtubeTitle: z
+    .string()
+    .trim()
+    .min(1, "Informe o título para enviar o vídeo ao YouTube."),
   privacyLevel: z.enum(TIKTOK_PRIVACY_LEVEL_VALUES).nullable(),
   allowComment: z.boolean(),
   allowDuet: z.boolean(),
@@ -128,6 +168,9 @@ export default function Videos() {
   const [activePublishTab, setActivePublishTab] = useState<IntegrationProvider>(
     IntegrationProvider.TIKTOK,
   );
+  const [tikTokPublishStatusId, setTikTokPublishStatusId] = useState<
+    string | null
+  >(null);
   const publishForm = useForm<PublishFormValues>({
     resolver: zodResolver(publishFormSchema),
     defaultValues: defaultPublishFormValues,
@@ -136,7 +179,9 @@ export default function Videos() {
   const {
     getIntegrations: { data: integrations },
   } = useIntegrationsService();
-  const { publishTikTok, getCreatorInfo } = useTikTokService();
+  const { publishTikTok, getCreatorInfo, getPublishStatus } = useTikTokService(
+    tikTokPublishStatusId,
+  );
   const { uploadYoutube } = useYoutubeService();
   const {
     listVideos: { data, isLoading: isLoadingVideos },
@@ -168,37 +213,61 @@ export default function Videos() {
   const watchedAllowStitch =
     useWatch({ control: publishForm.control, name: "allowStitch" }) ?? false;
   const watchedContentDisclosureEnabled =
-    useWatch({ control: publishForm.control, name: "contentDisclosureEnabled" }) ?? false;
+    useWatch({
+      control: publishForm.control,
+      name: "contentDisclosureEnabled",
+    }) ?? false;
   const watchedBrandOrganicToggle =
-    useWatch({ control: publishForm.control, name: "brandOrganicToggle" }) ?? false;
+    useWatch({ control: publishForm.control, name: "brandOrganicToggle" }) ??
+    false;
   const watchedBrandContentToggle =
-    useWatch({ control: publishForm.control, name: "brandContentToggle" }) ?? false;
+    useWatch({ control: publishForm.control, name: "brandContentToggle" }) ??
+    false;
   const watchedContentDisclosureAccepted =
-    useWatch({ control: publishForm.control, name: "contentDisclosureAccepted" }) ?? false;
+    useWatch({
+      control: publishForm.control,
+      name: "contentDisclosureAccepted",
+    }) ?? false;
   const hasBrandOrganicDisclosure =
     watchedContentDisclosureEnabled && watchedBrandOrganicToggle;
   const hasBrandContentDisclosure =
     watchedContentDisclosureEnabled && watchedBrandContentToggle;
   const disclosureSelectionReady =
-    !watchedContentDisclosureEnabled || hasBrandOrganicDisclosure || hasBrandContentDisclosure;
+    !watchedContentDisclosureEnabled ||
+    hasBrandOrganicDisclosure ||
+    hasBrandContentDisclosure;
   const requiresBrandedContentTerms = hasBrandContentDisclosure;
   const disclosureLabelMessage = hasBrandContentDisclosure
-    ? "Sua foto/vídeo será rotulado como \"Parceria paga\"."
+    ? 'Sua foto/vídeo será rotulado como "Parceria paga".'
     : hasBrandOrganicDisclosure
-      ? "Sua foto/vídeo será rotulado como \"Conteúdo promocional\"."
+      ? 'Sua foto/vídeo será rotulado como "Conteúdo promocional".'
       : null;
   const showDisclosureSummary =
-    watchedContentDisclosureEnabled && disclosureSelectionReady && Boolean(disclosureLabelMessage);
+    watchedContentDisclosureEnabled &&
+    disclosureSelectionReady &&
+    Boolean(disclosureLabelMessage);
+  const isPrivacySelected = Boolean(watchedPrivacyLevel);
   const isPrivateVisibilitySelected = watchedPrivacyLevel === "SELF_ONLY";
-  const areInteractionsBlockedByPrivacy = isPrivateVisibilitySelected;
+  const areInteractionsBlockedByPrivacy =
+    !isPrivacySelected || isPrivateVisibilitySelected;
+  const brandedContentVisibilityMessage = isPrivateVisibilitySelected
+    ? BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE
+    : BRANDED_CONTENT_PUBLIC_OR_FRIENDS_MESSAGE;
   const isBrandedContentBlockedByPrivateVisibility =
-    watchedContentDisclosureEnabled && isPrivateVisibilitySelected;
+    watchedContentDisclosureEnabled &&
+    isPrivacySelected &&
+    !TIKTOK_BRANDED_CONTENT_PRIVACY_LEVELS.has(
+      watchedPrivacyLevel as TikTokPrivacyLevel,
+    );
   const showDisclosureSelectionTooltip =
     activePublishTab === IntegrationProvider.TIKTOK &&
     watchedContentDisclosureEnabled &&
     !disclosureSelectionReady;
   const showPrivateVisibilityTooltip =
-    watchedContentDisclosureEnabled && isPrivateVisibilitySelected;
+    isBrandedContentBlockedByPrivateVisibility;
+  const hasSubmittedTikTokPublish = Boolean(tikTokPublishStatusId);
+  const isTikTokFormLocked = isPublishingAny || hasSubmittedTikTokPublish;
+  const tikTokPublishStatus = getPublishStatus.data;
 
   const isVideoDurationAboveTikTokLimit = useMemo(() => {
     if (
@@ -218,7 +287,11 @@ export default function Videos() {
   };
 
   const formatSecondsToMinutes = (seconds?: number): string => {
-    if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+    if (
+      typeof seconds !== "number" ||
+      !Number.isFinite(seconds) ||
+      seconds < 0
+    ) {
       return "0 min";
     }
 
@@ -232,24 +305,37 @@ export default function Videos() {
     return `${value} min`;
   };
 
-  const fetchTikTokCreatorInfo = async (
-    options?: { showErrorToast?: boolean },
-  ): Promise<TikTokCreatorInfoOutput | undefined> => {
+  const formatTikTokPublishStatus = (status?: string): string => {
+    if (!status) {
+      return "Consultando status no TikTok";
+    }
+
+    return TIKTOK_PUBLISH_STATUS_LABELS[status] ?? status;
+  };
+
+  const closePublishDialog = () => {
+    setIsPublishDialogOpen(false);
+    setSelectedVideo(null);
+    setTikTokPublishStatusId(null);
+    publishForm.reset(defaultPublishFormValues);
+  };
+
+  const fetchTikTokCreatorInfo = async (options?: {
+    showErrorToast?: boolean;
+  }): Promise<TikTokCreatorInfoOutput | undefined> => {
     const response = await getCreatorInfo.refetch();
 
     if (!response.data) {
       if (options?.showErrorToast ?? true) {
         toast({
           title: "Erro ao carregar conta TikTok",
-          description: "Não foi possível buscar as opções de publicação do criador.",
+          description:
+            "Não foi possível buscar as opções de publicação do criador.",
           variant: "destructive",
         });
       }
       return undefined;
     }
-
-    console.log("TikTok Creator Info:", response.data);
-
 
     return response.data;
   };
@@ -257,18 +343,21 @@ export default function Videos() {
   useEffect(() => {
     if (
       !watchedContentDisclosureEnabled ||
-      watchedPrivacyLevel !== "SELF_ONLY" ||
+      !isBrandedContentBlockedByPrivateVisibility ||
       !watchedBrandContentToggle
     ) {
       return;
     }
 
     publishForm.setValue("brandContentToggle", false, { shouldDirty: true });
-    publishForm.setValue("contentDisclosureAccepted", false, { shouldDirty: true });
+    publishForm.setValue("contentDisclosureAccepted", false, {
+      shouldDirty: true,
+    });
   }, [
     publishForm,
     watchedBrandContentToggle,
     watchedContentDisclosureEnabled,
+    isBrandedContentBlockedByPrivateVisibility,
     watchedPrivacyLevel,
   ]);
 
@@ -304,6 +393,7 @@ export default function Videos() {
     setSelectedVideo(video);
     setIsPublishDialogOpen(true);
     setActivePublishTab(defaultTab);
+    setTikTokPublishStatusId(null);
     publishForm.reset({
       ...defaultPublishFormValues,
       tiktokCaption: defaultTitle.slice(0, TIKTOK_CAPTION_MAX_LENGTH),
@@ -370,7 +460,8 @@ export default function Videos() {
     if (!values.contentDisclosureAccepted) {
       toast({
         title: "Confirmação obrigatória",
-        description: "Confirme as opções de conteúdo antes de publicar no TikTok.",
+        description:
+          "Confirme as opções de conteúdo antes de publicar no TikTok.",
         variant: "destructive",
       });
       return;
@@ -399,7 +490,8 @@ export default function Videos() {
     if (!creatorInfo.privacyLevelOptions.includes(privacyLevel)) {
       toast({
         title: "Privacidade indisponível",
-        description: "Escolha uma opção de privacidade válida para esta conta TikTok.",
+        description:
+          "Escolha uma opção de privacidade válida para esta conta TikTok.",
         variant: "destructive",
       });
       return;
@@ -415,25 +507,33 @@ export default function Videos() {
     }
 
     try {
+      setTikTokPublishStatusId(null);
       const { publishId } = await publishTikTok.mutateAsync({
         videoId: selectedVideo.id,
         title: caption,
         videoPath: selectedVideo.url,
         privacyLevel,
-        disableComment: creatorInfo.commentDisabled ? true : !values.allowComment,
+        disableComment: creatorInfo.commentDisabled
+          ? true
+          : !values.allowComment,
         disableDuet: creatorInfo.duetDisabled ? true : !values.allowDuet,
         disableStitch: creatorInfo.stitchDisabled ? true : !values.allowStitch,
-        brandContentToggle: values.contentDisclosureEnabled ? values.brandContentToggle : false,
-        brandOrganicToggle: values.contentDisclosureEnabled ? values.brandOrganicToggle : false,
+        brandContentToggle: values.contentDisclosureEnabled
+          ? values.brandContentToggle
+          : false,
+        brandOrganicToggle: values.contentDisclosureEnabled
+          ? values.brandOrganicToggle
+          : false,
       });
 
       toast({
-        title: "Publicação enviada",
+        title: "Upload enviado ao TikTok",
         description: `TikTok ID: ${publishId ?? "-"} • ${TIKTOK_PROCESSING_NOTICE}`,
       });
 
-      setIsPublishDialogOpen(false);
-      setSelectedVideo(null);
+      if (publishId) {
+        setTikTokPublishStatusId(publishId);
+      }
     } catch {
       toast({
         title: "Erro ao publicar",
@@ -496,6 +596,11 @@ export default function Videos() {
 
   const handlePublishActiveTab = async () => {
     if (activePublishTab === IntegrationProvider.TIKTOK) {
+      if (hasSubmittedTikTokPublish) {
+        closePublishDialog();
+        return;
+      }
+
       await handlePublishTikTok();
       return;
     }
@@ -511,6 +616,7 @@ export default function Videos() {
   const selectedPrivacyValue = tikTokPrivacyReady ? watchedPrivacyLevel : null;
   const canPublishTikTok =
     isTikTokConnected &&
+    !hasSubmittedTikTokPublish &&
     !getCreatorInfo.isFetching &&
     Boolean(tikTokCreatorInfo) &&
     tikTokCreatorInfo?.canPost !== false &&
@@ -519,20 +625,30 @@ export default function Videos() {
     disclosureSelectionReady &&
     watchedContentDisclosureAccepted &&
     !isVideoDurationAboveTikTokLimit;
-  const canPublishYoutube = isYoutubeConnected && Boolean(watchedYoutubeTitle.trim());
+  const canPublishYoutube =
+    isYoutubeConnected && Boolean(watchedYoutubeTitle.trim());
   const canPublishActiveTab =
     activePublishTab === IntegrationProvider.TIKTOK
-      ? canPublishTikTok
+      ? hasSubmittedTikTokPublish || canPublishTikTok
       : canPublishYoutube;
 
   const canEnableComment = Boolean(
-    tikTokCreatorInfo && !tikTokCreatorInfo.commentDisabled && !areInteractionsBlockedByPrivacy,
+    tikTokCreatorInfo &&
+    !tikTokCreatorInfo.commentDisabled &&
+    !areInteractionsBlockedByPrivacy &&
+    !hasSubmittedTikTokPublish,
   );
   const canEnableDuet = Boolean(
-    tikTokCreatorInfo && !tikTokCreatorInfo.duetDisabled && !areInteractionsBlockedByPrivacy,
+    tikTokCreatorInfo &&
+    !tikTokCreatorInfo.duetDisabled &&
+    !areInteractionsBlockedByPrivacy &&
+    !hasSubmittedTikTokPublish,
   );
   const canEnableStitch = Boolean(
-    tikTokCreatorInfo && !tikTokCreatorInfo.stitchDisabled && !areInteractionsBlockedByPrivacy,
+    tikTokCreatorInfo &&
+    !tikTokCreatorInfo.stitchDisabled &&
+    !areInteractionsBlockedByPrivacy &&
+    !hasSubmittedTikTokPublish,
   );
 
   const creatorDisplayName =
@@ -540,9 +656,11 @@ export default function Videos() {
     tikTokCreatorInfo?.creatorUsername ||
     "Conta TikTok";
   const publishActionLabel =
-    activePublishTab === IntegrationProvider.TIKTOK
-      ? "Publicar no TikTok"
-      : "Publicar no YouTube";
+    activePublishTab === IntegrationProvider.TIKTOK && hasSubmittedTikTokPublish
+      ? "Fechar"
+      : activePublishTab === IntegrationProvider.TIKTOK
+        ? "Publicar no TikTok"
+        : "Publicar no YouTube";
   const publishLoadingLabel =
     activePublishTab === IntegrationProvider.TIKTOK
       ? "Publicando no TikTok..."
@@ -590,7 +708,9 @@ export default function Videos() {
                 )}
                 <CardContent className="space-y-2 p-4">
                   <div className="flex items-start justify-between gap-2">
-                    <p className="truncate text-sm font-medium">{video?.title}</p>
+                    <p className="truncate text-sm font-medium">
+                      {video?.title}
+                    </p>
                     {isPublished ? (
                       <Badge className="shrink-0 border-sky-500/30 bg-sky-500/20 text-xs text-sky-400 hover:bg-sky-500/20 hover:text-sky-400">
                         <CheckCircle2 className="mr-1 size-3" />
@@ -615,7 +735,9 @@ export default function Videos() {
                     <span>{formatSize(video.size)}</span>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">{formatRenderedAt(video.createdAt)}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {formatRenderedAt(video.createdAt)}
+                  </p>
 
                   <div className="flex gap-2 pt-2">
                     <Button
@@ -646,7 +768,12 @@ export default function Videos() {
                         </a>
                       </Button>
                     ) : (
-                      <Button size="sm" variant="outline" className="flex-1" disabled>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1"
+                        disabled
+                      >
                         <Download className="mr-1.5 size-4" />
                         Baixar
                       </Button>
@@ -666,15 +793,16 @@ export default function Videos() {
             return;
           }
 
-          setIsPublishDialogOpen(open);
           if (!open) {
-            setSelectedVideo(null);
-            publishForm.reset(defaultPublishFormValues);
+            closePublishDialog();
+            return;
           }
+
+          setIsPublishDialogOpen(open);
         }}
       >
         <DialogContent
-          className="scrollbar-app max-h-[calc(100dvh-2rem)] overflow-y-auto border-border/70 bg-card/95 sm:max-w-xl"
+          className="scrollbar-app max-h-[calc(100dvh-2rem)] overflow-y-auto border-border/70 bg-card/95 sm:max-w-5xl"
           onEscapeKeyDown={(event) => {
             if (isPublishingAny) {
               event.preventDefault();
@@ -692,490 +820,729 @@ export default function Videos() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <div className="rounded-lg border border-border/70 bg-background/40 p-3">
-              <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                Vídeo selecionado
-              </p>
-              <p className="truncate text-sm font-medium">{selectedVideo?.title ?? "-"}</p>
-              <p className="truncate text-xs text-muted-foreground">
-                {(selectedVideo?.hashtags ?? []).join(" ") || "Sem hashtags"}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              {PUBLISH_TABS.map((provider) => {
-                const ProviderIcon =
-                  provider === IntegrationProvider.TIKTOK ? Music2 : Youtube;
-                const isConnected = activeProviders.has(provider);
-                const isActiveTab = activePublishTab === provider;
-
-                return (
-                  <Button
-                    key={provider}
-                    type="button"
-                    variant="outline"
-                    className={cn(
-                      "h-auto justify-start rounded-xl border-border/70 bg-background/50 px-4 py-3 text-left",
-                      isActiveTab && "border-primary/60 bg-primary/10 text-primary",
-                    )}
-                    onClick={() => {
-                      setActivePublishTab(provider);
-
-                      if (
-                        provider === IntegrationProvider.TIKTOK &&
-                        isConnected &&
-                        !getCreatorInfo.isFetching
-                      ) {
-                        void fetchTikTokCreatorInfo({ showErrorToast: true });
-                      }
-                    }}
-                    disabled={isPublishingAny}
-                  >
-                    <span className="flex items-center gap-2">
-                      <ProviderIcon className="size-4" />
-                      <span className="text-sm font-medium">{PLATFORM_LABELS[provider]}</span>
-                      <span
-                        className={cn(
-                          "text-xs",
-                          isConnected ? "text-emerald-500" : "text-muted-foreground",
-                        )}
-                      >
-                        {isConnected ? "Conectado" : "Desconectado"}
-                      </span>
-                    </span>
-                  </Button>
-                );
-              })}
-            </div>
-
-            {activePublishTab === IntegrationProvider.TIKTOK ? (
-              <div className="space-y-4 rounded-xl border border-border/70 bg-background/40 p-4">
-                {!isTikTokConnected ? (
-                  <p className="text-sm text-muted-foreground">
-                    Conecte o TikTok em Integrações para configurar e publicar.
-                  </p>
-                ) : (
-                  <>
-                    <div className="rounded-lg border border-border/60 bg-background/70 p-3">
-                      {getCreatorInfo.isFetching && !tikTokCreatorInfo ? (
-                        <p className="text-sm text-muted-foreground">
-                          Carregando dados do criador...
-                        </p>
-                      ) : tikTokCreatorInfo ? (
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-3">
-                              <Avatar className="size-10">
-                                <AvatarImage
-                                  src={tikTokCreatorInfo.creatorAvatarUrl}
-                                  alt={creatorDisplayName}
-                                />
-                                <AvatarFallback>
-                                  {creatorDisplayName.slice(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <p className="text-sm font-medium">{creatorDisplayName}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  @{tikTokCreatorInfo.creatorUsername}
-                                </p>
-                              </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground">
-                              Duração máxima: {formatSecondsToMinutes(tikTokCreatorInfo.maxVideoPostDurationSec)}
-                            </p>
-                          </div>
-                          {!tikTokCreatorInfo.canPost ? (
-                            <p className="text-xs text-destructive">
-                              {tikTokCreatorInfo.canPostErrorMessage ??
-                                "Esta conta não pode publicar no TikTok agora. Tente novamente mais tarde."}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">
-                          Não foi possível carregar os dados do criador.
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">Legenda</p>
-                        <p className="text-xs text-muted-foreground">
-                          {watchedTikTokCaption.length}/{TIKTOK_CAPTION_MAX_LENGTH}
-                        </p>
-                      </div>
-                      <Textarea
-                        {...publishForm.register("tiktokCaption")}
-                        maxLength={TIKTOK_CAPTION_MAX_LENGTH}
-                        placeholder="Adicione uma legenda para o vídeo"
-                        className="min-h-24 resize-y"
-                        disabled={isPublishingAny}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Quem pode assistir</p>
-                      <Controller
-                        control={publishForm.control}
-                        name="privacyLevel"
-                        render={({ field }) => (
-                          <Select
-                            value={selectedPrivacyValue ?? undefined}
-                            onValueChange={(value) => {
-                              field.onChange(value as TikTokPrivacyLevel);
-                              publishForm.setValue("contentDisclosureAccepted", false, {
-                                shouldDirty: true,
-                              });
-                            }}
-                            disabled={
-                              isPublishingAny ||
-                              getCreatorInfo.isFetching ||
-                              !tikTokCreatorInfo?.privacyLevelOptions?.length
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione a privacidade" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {(tikTokCreatorInfo?.privacyLevelOptions ?? []).map((option) => {
-                                const isPrivateOptionBlocked =
-                                  option === "SELF_ONLY" && hasBrandContentDisclosure;
-
-                                if (!isPrivateOptionBlocked) {
-                                  return (
-                                    <SelectItem key={option} value={option}>
-                                      {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
-                                    </SelectItem>
-                                  );
-                                }
-
-                                return (
-                                  <Tooltip key={option}>
-                                    <TooltipTrigger asChild>
-                                      <SelectItem
-                                        value={option}
-                                        disabled
-                                        className="data-[disabled]:pointer-events-auto"
-                                      >
-                                        {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
-                                      </SelectItem>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="bottom" align="start" sideOffset={8}>
-                                      <p>{BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                );
-                              })}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      />
-                      {hasBrandContentDisclosure ? (
-                        <p className="text-xs text-muted-foreground">
-                          {BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Permitir interações</p>
-                      <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-                        <label
-                          className={cn(
-                            "flex items-center gap-2",
-                            !canEnableComment && "text-muted-foreground",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            className="size-4 accent-primary"
-                            checked={canEnableComment ? watchedAllowComment : false}
-                            onChange={(event) =>
-                              publishForm.setValue("allowComment", event.target.checked, { shouldDirty: true })
-                            }
-                            disabled={isPublishingAny || !canEnableComment}
-                          />
-                          Comentário
-                        </label>
-
-                        <label
-                          className={cn(
-                            "flex items-center gap-2",
-                            !canEnableDuet && "text-muted-foreground",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            className="size-4 accent-primary"
-                            checked={canEnableDuet ? watchedAllowDuet : false}
-                            onChange={(event) =>
-                              publishForm.setValue("allowDuet", event.target.checked, { shouldDirty: true })
-                            }
-                            disabled={isPublishingAny || !canEnableDuet}
-                          />
-                          Dueto
-                        </label>
-
-                        <label
-                          className={cn(
-                            "flex items-center gap-2",
-                            !canEnableStitch && "text-muted-foreground",
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            className="size-4 accent-primary"
-                            checked={canEnableStitch ? watchedAllowStitch : false}
-                            onChange={(event) =>
-                              publishForm.setValue("allowStitch", event.target.checked, { shouldDirty: true })
-                            }
-                            disabled={isPublishingAny || !canEnableStitch}
-                          />
-                          Stitch
-                        </label>
-                      </div>
-                      {areInteractionsBlockedByPrivacy ? (
-                        <p className="text-xs text-muted-foreground">
-                          Publicações com visibilidade &quot;Somente eu&quot; não permitem comentários,
-                          duetos ou stitch.
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium">Divulgação / Conteúdo promocional</p>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          className="size-4 accent-primary"
-                          checked={watchedContentDisclosureEnabled}
-                          onChange={(event) => {
-                            const checked = event.target.checked;
-                            publishForm.setValue("contentDisclosureEnabled", checked, { shouldDirty: true });
-                            if (!checked) {
-                              publishForm.setValue("brandOrganicToggle", false, { shouldDirty: true });
-                              publishForm.setValue("brandContentToggle", false, { shouldDirty: true });
-                            }
-                            publishForm.setValue("contentDisclosureAccepted", false, { shouldDirty: true });
-                          }}
-                          disabled={isPublishingAny}
-                        />
-                        Conteúdo promocional
-                      </label>
-                      <p className="text-xs text-muted-foreground">
-                        {DISCLOSURE_TOGGLE_DESCRIPTION}
-                      </p>
-
-                      {watchedContentDisclosureEnabled ? (
-                        <div className="space-y-2 rounded-md border border-border/60 bg-background/70 p-3">
-                          {showDisclosureSummary ? (
-                            <div className="rounded-md border border-sky-500/20 bg-sky-500/10 px-3 py-2">
-                              <p className="text-xs font-medium text-sky-100">
-                                {disclosureLabelMessage}
-                              </p>
-                              <p className="mt-1 text-xs text-sky-100/80">
-                                {DISCLOSURE_LOCKED_LABEL_NOTE}
-                              </p>
-                            </div>
-                          ) : null}
-                          <label className="flex items-center gap-2 text-sm">
-                            <input
-                              type="checkbox"
-                              className="size-4 accent-primary"
-                              checked={watchedBrandOrganicToggle}
-                              onChange={(event) => {
-                                publishForm.setValue("brandOrganicToggle", event.target.checked, { shouldDirty: true });
-                                publishForm.setValue("contentDisclosureAccepted", false, { shouldDirty: true });
-                              }}
-                              disabled={isPublishingAny}
-                            />
-                            Sua marca
-                          </label>
-                          <p className="pl-6 text-xs text-muted-foreground">
-                            {BRAND_ORGANIC_DESCRIPTION}
-                          </p>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="inline-flex w-fit">
-                                <label
-                                  className={cn(
-                                    "flex items-center gap-2 text-sm",
-                                    isBrandedContentBlockedByPrivateVisibility &&
-                                      "cursor-not-allowed text-muted-foreground",
-                                  )}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    className="size-4 accent-primary"
-                                    checked={watchedBrandContentToggle}
-                                    onChange={(event) => {
-                                      publishForm.setValue("brandContentToggle", event.target.checked, {
-                                        shouldDirty: true,
-                                      });
-                                      publishForm.setValue("contentDisclosureAccepted", false, {
-                                        shouldDirty: true,
-                                      });
-                                    }}
-                                    disabled={
-                                      isPublishingAny || isBrandedContentBlockedByPrivateVisibility
-                                    }
-                                  />
-                                  Conteúdo de marca
-                                </label>
-                              </span>
-                            </TooltipTrigger>
-                            {showPrivateVisibilityTooltip ? (
-                              <TooltipContent side="top">
-                                <p>{BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}</p>
-                              </TooltipContent>
-                            ) : null}
-                          </Tooltip>
-                          <p className="pl-6 text-xs text-muted-foreground">
-                            {BRAND_CONTENT_DESCRIPTION}
-                          </p>
-                          {!disclosureSelectionReady ? (
-                            <p className="text-xs text-destructive">
-                              {COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}
-                            </p>
-                          ) : null}
-                          {isBrandedContentBlockedByPrivateVisibility ? (
-                            <p className="text-xs text-muted-foreground">
-                              {BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE}
-                            </p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {isVideoDurationAboveTikTokLimit && tikTokCreatorInfo ? (
-                      <p className="text-xs text-destructive">
-                        O vídeo tem {formatSecondsToMinutes(selectedVideo?.duration ?? 0)} e
-                        ultrapassa o limite da conta (
-                        {formatSecondsToMinutes(tikTokCreatorInfo.maxVideoPostDurationSec)}).
-                      </p>
-                    ) : null}
-
-                    <div className="flex items-start gap-2 text-sm">
-                      <input
-                        id="tiktok-compliance-consent"
-                        type="checkbox"
-                        className="mt-0.5 size-4 accent-primary"
-                        checked={watchedContentDisclosureAccepted}
-                        onChange={(event) =>
-                          publishForm.setValue("contentDisclosureAccepted", event.target.checked, { shouldDirty: true })
-                        }
-                        disabled={isPublishingAny}
-                      />
-                      <div className="space-y-1">
-                        <label
-                          htmlFor="tiktok-compliance-consent"
-                          className="text-muted-foreground"
-                        >
-                          Confirmo que revisei as configurações de privacidade, interações e
-                          conteúdo conforme as regras do TikTok antes de publicar.
-                        </label>
-                        <p className="text-muted-foreground">
-                          {requiresBrandedContentTerms ? (
-                            <>
-                              Ao publicar, você concorda com a{" "}
-                              <a
-                                href={TIKTOK_BRANDED_CONTENT_POLICY_URL}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline underline-offset-2 hover:text-foreground"
-                              >
-                                Política de Conteúdo de Marca do TikTok
-                              </a>{" "}
-                              e com a{" "}
-                              <a
-                                href={TIKTOK_MUSIC_USAGE_CONFIRMATION_URL}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline underline-offset-2 hover:text-foreground"
-                              >
-                                Confirmação de Uso de Música do TikTok
-                              </a>
-                              .
-                            </>
-                          ) : (
-                            <>
-                              Ao publicar, você concorda com a{" "}
-                              <a
-                                href={TIKTOK_MUSIC_USAGE_CONFIRMATION_URL}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="underline underline-offset-2 hover:text-foreground"
-                              >
-                                Confirmação de Uso de Música do TikTok
-                              </a>
-                              .
-                            </>
-                          )}
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-4 rounded-xl border border-border/70 bg-background/40 p-4">
-                {!isYoutubeConnected ? (
-                  <p className="text-sm text-muted-foreground">
-                    Conecte o YouTube em Integrações para publicar.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-sm font-medium">Título</p>
-                    <Textarea
-                      {...publishForm.register("youtubeTitle")}
-                      placeholder="Título para upload no YouTube"
-                      className="min-h-24 resize-y"
-                      disabled={isPublishingAny}
+            <div className="grid gap-4 lg:grid-cols-[minmax(260px,0.9fr)_minmax(360px,1fr)] lg:items-start">
+              <div className="overflow-hidden rounded-xl border border-border/70 bg-background/40">
+                <div className="flex justify-center bg-black">
+                  {selectedVideo?.url ? (
+                    <video
+                      controls
+                      preload="metadata"
+                      className="max-h-[52dvh] w-full bg-black object-contain lg:max-h-[68dvh]"
+                      src={selectedVideo.url}
                     />
+                  ) : (
+                    <div className="flex aspect-[9/16] w-full max-w-sm items-center justify-center">
+                      <Film className="size-8 text-muted-foreground/40" />
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-3 p-3">
+                  <div>
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Preview do conteúdo
+                    </p>
+                    <p className="truncate text-sm font-medium">
+                      {selectedVideo?.title ?? "-"}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {(selectedVideo?.hashtags ?? []).join(" ") ||
+                        "Sem hashtags"}
+                    </p>
                   </div>
-                )}
+                  <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                    <div className="rounded-md border border-border/60 bg-background/60 px-2 py-1.5">
+                      <span className="block text-[10px] uppercase tracking-wide">
+                        Duração
+                      </span>
+                      <span className="text-foreground">
+                        {formatDuration(selectedVideo?.duration)}
+                      </span>
+                    </div>
+                    <div className="rounded-md border border-border/60 bg-background/60 px-2 py-1.5">
+                      <span className="block text-[10px] uppercase tracking-wide">
+                        Tamanho
+                      </span>
+                      <span className="text-foreground">
+                        {formatSize(selectedVideo?.size)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
 
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  className="block"
-                  title={showDisclosureSelectionTooltip ? COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE : undefined}
-                >
-                  <Button
-                    className="h-11 w-full rounded-xl"
-                    onClick={handlePublishActiveTab}
-                    disabled={isPublishingAny || !canPublishActiveTab}
-                  >
-                    {isPublishingAny ? (
-                      <>
-                        {publishLoadingLabel}
-                        <Loader2 className="ml-2 size-4 animate-spin" />
-                      </>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-2">
+                  {PUBLISH_TABS.map((provider) => {
+                    const ProviderIcon =
+                      provider === IntegrationProvider.TIKTOK
+                        ? Music2
+                        : Youtube;
+                    const isConnected = activeProviders.has(provider);
+                    const isActiveTab = activePublishTab === provider;
+
+                    return (
+                      <Button
+                        key={provider}
+                        type="button"
+                        variant="outline"
+                        className={cn(
+                          "h-auto justify-start rounded-xl border-border/70 bg-background/50 px-4 py-3 text-left",
+                          isActiveTab &&
+                            "border-primary/60 bg-primary/10 text-primary",
+                        )}
+                        onClick={() => {
+                          setActivePublishTab(provider);
+
+                          if (
+                            provider === IntegrationProvider.TIKTOK &&
+                            isConnected &&
+                            !getCreatorInfo.isFetching
+                          ) {
+                            void fetchTikTokCreatorInfo({
+                              showErrorToast: true,
+                            });
+                          }
+                        }}
+                        disabled={isPublishingAny || hasSubmittedTikTokPublish}
+                      >
+                        <span className="flex items-center gap-2">
+                          <ProviderIcon className="size-4" />
+                          <span className="text-sm font-medium">
+                            {PLATFORM_LABELS[provider]}
+                          </span>
+                          <span
+                            className={cn(
+                              "text-xs",
+                              isConnected
+                                ? "text-emerald-500"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {isConnected ? "Conectado" : "Desconectado"}
+                          </span>
+                        </span>
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                {activePublishTab === IntegrationProvider.TIKTOK ? (
+                  <div className="space-y-4 rounded-xl border border-border/70 bg-background/40 p-4">
+                    {!isTikTokConnected ? (
+                      <p className="text-sm text-muted-foreground">
+                        Conecte o TikTok em Integrações para configurar e
+                        publicar.
+                      </p>
                     ) : (
                       <>
-                        {publishActionLabel}
-                        <Send className="ml-2 size-4" />
+                        <div className="rounded-lg border border-border/60 bg-background/70 p-3">
+                          {getCreatorInfo.isFetching && !tikTokCreatorInfo ? (
+                            <p className="text-sm text-muted-foreground">
+                              Carregando dados do criador...
+                            </p>
+                          ) : tikTokCreatorInfo ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="size-10">
+                                    <AvatarImage
+                                      src={tikTokCreatorInfo.creatorAvatarUrl}
+                                      alt={creatorDisplayName}
+                                    />
+                                    <AvatarFallback>
+                                      {creatorDisplayName
+                                        .slice(0, 2)
+                                        .toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <p className="text-sm font-medium">
+                                      {creatorDisplayName}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
+                                      @{tikTokCreatorInfo.creatorUsername}
+                                    </p>
+                                  </div>
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                  Duração máxima:{" "}
+                                  {formatSecondsToMinutes(
+                                    tikTokCreatorInfo.maxVideoPostDurationSec,
+                                  )}
+                                </p>
+                              </div>
+                              {!tikTokCreatorInfo.canPost ? (
+                                <p className="text-xs text-destructive">
+                                  {tikTokCreatorInfo.canPostErrorMessage ??
+                                    "Esta conta não pode publicar no TikTok agora. Tente novamente mais tarde."}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">
+                              Não foi possível carregar os dados do criador.
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium">
+                              Título / legenda
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {watchedTikTokCaption.length}/
+                              {TIKTOK_CAPTION_MAX_LENGTH}
+                            </p>
+                          </div>
+                          <Textarea
+                            {...publishForm.register("tiktokCaption")}
+                            maxLength={TIKTOK_CAPTION_MAX_LENGTH}
+                            placeholder="Adicione um título ou legenda para o vídeo"
+                            className="min-h-24 resize-y"
+                            disabled={isTikTokFormLocked}
+                          />
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">
+                            Quem pode assistir este vídeo
+                          </p>
+                          <Controller
+                            control={publishForm.control}
+                            name="privacyLevel"
+                            render={({ field }) => (
+                              <Select
+                                value={selectedPrivacyValue ?? undefined}
+                                onValueChange={(value) => {
+                                  field.onChange(value as TikTokPrivacyLevel);
+                                  publishForm.setValue(
+                                    "contentDisclosureAccepted",
+                                    false,
+                                    {
+                                      shouldDirty: true,
+                                    },
+                                  );
+                                }}
+                                disabled={
+                                  isTikTokFormLocked ||
+                                  getCreatorInfo.isFetching ||
+                                  !tikTokCreatorInfo?.privacyLevelOptions
+                                    ?.length
+                                }
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecione a privacidade" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {(
+                                    tikTokCreatorInfo?.privacyLevelOptions ?? []
+                                  ).map((option) => {
+                                    const isPrivateOptionBlocked =
+                                      hasBrandContentDisclosure &&
+                                      !TIKTOK_BRANDED_CONTENT_PRIVACY_LEVELS.has(
+                                        option,
+                                      );
+
+                                    if (!isPrivateOptionBlocked) {
+                                      return (
+                                        <SelectItem key={option} value={option}>
+                                          {TIKTOK_PRIVACY_LEVEL_LABELS[option]}
+                                        </SelectItem>
+                                      );
+                                    }
+
+                                    return (
+                                      <Tooltip key={option}>
+                                        <TooltipTrigger asChild>
+                                          <SelectItem
+                                            value={option}
+                                            disabled
+                                            className="data-[disabled]:pointer-events-auto"
+                                          >
+                                            {
+                                              TIKTOK_PRIVACY_LEVEL_LABELS[
+                                                option
+                                              ]
+                                            }
+                                          </SelectItem>
+                                        </TooltipTrigger>
+                                        <TooltipContent
+                                          side="bottom"
+                                          align="start"
+                                          sideOffset={8}
+                                        >
+                                          <p>
+                                            {option === "SELF_ONLY"
+                                              ? BRANDED_CONTENT_PRIVATE_VISIBILITY_MESSAGE
+                                              : BRANDED_CONTENT_PUBLIC_OR_FRIENDS_MESSAGE}
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            )}
+                          />
+                          {hasBrandContentDisclosure ? (
+                            <p className="text-xs text-muted-foreground">
+                              {BRANDED_CONTENT_PUBLIC_OR_FRIENDS_MESSAGE}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">
+                            Permitir que usuários possam
+                          </p>
+                          <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
+                            <label
+                              className={cn(
+                                "flex items-center gap-2",
+                                !canEnableComment && "text-muted-foreground",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="size-4 accent-primary"
+                                checked={
+                                  canEnableComment ? watchedAllowComment : false
+                                }
+                                onChange={(event) =>
+                                  publishForm.setValue(
+                                    "allowComment",
+                                    event.target.checked,
+                                    { shouldDirty: true },
+                                  )
+                                }
+                                disabled={
+                                  isTikTokFormLocked || !canEnableComment
+                                }
+                              />
+                              <MessageCircle className="size-3.5" />
+                              Comentário
+                            </label>
+
+                            <label
+                              className={cn(
+                                "flex items-center gap-2",
+                                !canEnableDuet && "text-muted-foreground",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="size-4 accent-primary"
+                                checked={
+                                  canEnableDuet ? watchedAllowDuet : false
+                                }
+                                onChange={(event) =>
+                                  publishForm.setValue(
+                                    "allowDuet",
+                                    event.target.checked,
+                                    { shouldDirty: true },
+                                  )
+                                }
+                                disabled={isTikTokFormLocked || !canEnableDuet}
+                              />
+                              <Repeat2 className="size-3.5" />
+                              Dueto
+                            </label>
+
+                            <label
+                              className={cn(
+                                "flex items-center gap-2",
+                                !canEnableStitch && "text-muted-foreground",
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                className="size-4 accent-primary"
+                                checked={
+                                  canEnableStitch ? watchedAllowStitch : false
+                                }
+                                onChange={(event) =>
+                                  publishForm.setValue(
+                                    "allowStitch",
+                                    event.target.checked,
+                                    { shouldDirty: true },
+                                  )
+                                }
+                                disabled={
+                                  isTikTokFormLocked || !canEnableStitch
+                                }
+                              />
+                              <Scissors className="size-3.5" />
+                              Stitch
+                            </label>
+                          </div>
+                          {!isPrivacySelected ? (
+                            <p className="text-xs text-muted-foreground">
+                              {TIKTOK_PRIVACY_REQUIRED_INTERACTIONS_MESSAGE}
+                            </p>
+                          ) : isPrivateVisibilitySelected ? (
+                            <p className="text-xs text-muted-foreground">
+                              {TIKTOK_PRIVATE_INTERACTIONS_MESSAGE}
+                            </p>
+                          ) : tikTokCreatorInfo?.commentDisabled ||
+                            tikTokCreatorInfo?.duetDisabled ||
+                            tikTokCreatorInfo?.stitchDisabled ? (
+                            <p className="text-xs text-muted-foreground">
+                              {TIKTOK_CREATOR_DISABLED_INTERACTION_MESSAGE}
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="space-y-2">
+                          <label className="flex items-center justify-between gap-4 rounded-lg border border-border/60 bg-background/70 px-3 py-2 text-sm">
+                            <span>
+                              <span className="block font-medium">
+                                Divulgar conteúdo do vídeo
+                              </span>
+                              <span className="mt-1 block text-xs text-muted-foreground">
+                                {DISCLOSURE_TOGGLE_DESCRIPTION}
+                              </span>
+                            </span>
+                            <span className="relative inline-flex shrink-0">
+                              <input
+                                type="checkbox"
+                                role="switch"
+                                className="peer sr-only"
+                                checked={watchedContentDisclosureEnabled}
+                                onChange={(event) => {
+                                  const checked = event.target.checked;
+                                  publishForm.setValue(
+                                    "contentDisclosureEnabled",
+                                    checked,
+                                    { shouldDirty: true },
+                                  );
+                                  if (!checked) {
+                                    publishForm.setValue(
+                                      "brandOrganicToggle",
+                                      false,
+                                      { shouldDirty: true },
+                                    );
+                                    publishForm.setValue(
+                                      "brandContentToggle",
+                                      false,
+                                      { shouldDirty: true },
+                                    );
+                                  }
+                                  publishForm.setValue(
+                                    "contentDisclosureAccepted",
+                                    false,
+                                    { shouldDirty: true },
+                                  );
+                                }}
+                                disabled={isTikTokFormLocked}
+                              />
+                              <span className="h-5 w-9 rounded-full bg-muted transition peer-checked:bg-primary peer-disabled:opacity-60" />
+                              <span className="absolute left-0.5 top-0.5 size-4 rounded-full bg-background transition peer-checked:translate-x-4" />
+                            </span>
+                          </label>
+
+                          {watchedContentDisclosureEnabled ? (
+                            <div className="space-y-2 rounded-md border border-border/60 bg-background/70 p-3">
+                              {showDisclosureSummary ? (
+                                <div className="rounded-md border border-sky-500/20 bg-sky-500/10 px-3 py-2">
+                                  <p className="text-xs font-medium text-sky-100">
+                                    {disclosureLabelMessage}
+                                  </p>
+                                  <p className="mt-1 text-xs text-sky-100/80">
+                                    {DISCLOSURE_LOCKED_LABEL_NOTE}
+                                  </p>
+                                </div>
+                              ) : null}
+                              <label className="flex items-center gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  className="size-4 accent-primary"
+                                  checked={watchedBrandOrganicToggle}
+                                  onChange={(event) => {
+                                    publishForm.setValue(
+                                      "brandOrganicToggle",
+                                      event.target.checked,
+                                      { shouldDirty: true },
+                                    );
+                                    publishForm.setValue(
+                                      "contentDisclosureAccepted",
+                                      false,
+                                      { shouldDirty: true },
+                                    );
+                                  }}
+                                  disabled={isTikTokFormLocked}
+                                />
+                                Sua marca
+                              </label>
+                              <p className="pl-6 text-xs text-muted-foreground">
+                                {BRAND_ORGANIC_DESCRIPTION}
+                              </p>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span className="inline-flex w-fit">
+                                    <label
+                                      className={cn(
+                                        "flex items-center gap-2 text-sm",
+                                        isBrandedContentBlockedByPrivateVisibility &&
+                                          "cursor-not-allowed text-muted-foreground",
+                                      )}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        className="size-4 accent-primary"
+                                        checked={watchedBrandContentToggle}
+                                        onChange={(event) => {
+                                          publishForm.setValue(
+                                            "brandContentToggle",
+                                            event.target.checked,
+                                            {
+                                              shouldDirty: true,
+                                            },
+                                          );
+                                          publishForm.setValue(
+                                            "contentDisclosureAccepted",
+                                            false,
+                                            {
+                                              shouldDirty: true,
+                                            },
+                                          );
+                                        }}
+                                        disabled={
+                                          isTikTokFormLocked ||
+                                          isBrandedContentBlockedByPrivateVisibility
+                                        }
+                                      />
+                                      Conteúdo de marca
+                                    </label>
+                                  </span>
+                                </TooltipTrigger>
+                                {showPrivateVisibilityTooltip ? (
+                                  <TooltipContent side="top">
+                                    <p>{brandedContentVisibilityMessage}</p>
+                                  </TooltipContent>
+                                ) : null}
+                              </Tooltip>
+                              <p className="pl-6 text-xs text-muted-foreground">
+                                {BRAND_CONTENT_DESCRIPTION}
+                              </p>
+                              {!disclosureSelectionReady ? (
+                                <p className="text-xs text-destructive">
+                                  {COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}
+                                </p>
+                              ) : null}
+                              {isBrandedContentBlockedByPrivateVisibility ? (
+                                <p className="text-xs text-muted-foreground">
+                                  {brandedContentVisibilityMessage}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {isVideoDurationAboveTikTokLimit &&
+                        tikTokCreatorInfo ? (
+                          <p className="text-xs text-destructive">
+                            O vídeo tem{" "}
+                            {formatSecondsToMinutes(
+                              selectedVideo?.duration ?? 0,
+                            )}{" "}
+                            e ultrapassa o limite da conta (
+                            {formatSecondsToMinutes(
+                              tikTokCreatorInfo.maxVideoPostDurationSec,
+                            )}
+                            ).
+                          </p>
+                        ) : null}
+
+                        <div className="flex items-start gap-3 rounded-lg border border-border/60 bg-background/70 p-3 text-sm">
+                          <input
+                            id="tiktok-compliance-consent"
+                            type="checkbox"
+                            className="mt-1 size-4 accent-primary"
+                            checked={watchedContentDisclosureAccepted}
+                            onChange={(event) =>
+                              publishForm.setValue(
+                                "contentDisclosureAccepted",
+                                event.target.checked,
+                                { shouldDirty: true },
+                              )
+                            }
+                            disabled={isTikTokFormLocked}
+                          />
+                          <ShieldCheck className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                          <label
+                            htmlFor="tiktok-compliance-consent"
+                            className="text-muted-foreground"
+                          >
+                            {requiresBrandedContentTerms ? (
+                              <>
+                                By posting, you agree to TikTok&apos;s{" "}
+                                <a
+                                  href={TIKTOK_BRANDED_CONTENT_POLICY_URL}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline underline-offset-2 hover:text-foreground"
+                                >
+                                  Branded Content Policy
+                                </a>{" "}
+                                and{" "}
+                                <a
+                                  href={TIKTOK_MUSIC_USAGE_CONFIRMATION_URL}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline underline-offset-2 hover:text-foreground"
+                                >
+                                  Music Usage Confirmation
+                                </a>
+                                .
+                              </>
+                            ) : (
+                              <>
+                                By posting, you agree to TikTok&apos;s{" "}
+                                <a
+                                  href={TIKTOK_MUSIC_USAGE_CONFIRMATION_URL}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="underline underline-offset-2 hover:text-foreground"
+                                >
+                                  Music Usage Confirmation
+                                </a>
+                                .
+                              </>
+                            )}
+                          </label>
+                        </div>
+
+                        {hasSubmittedTikTokPublish ? (
+                          <div
+                            className={cn(
+                              "rounded-lg border p-3 text-sm",
+                              tikTokPublishStatus?.status === "FAILED"
+                                ? "border-destructive/40 bg-destructive/10"
+                                : "border-border/60 bg-background/70",
+                            )}
+                          >
+                            <div className="flex items-start gap-3">
+                              {tikTokPublishStatus?.status === "FAILED" ? (
+                                <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" />
+                              ) : tikTokPublishStatus?.status ===
+                                "PUBLISH_COMPLETE" ? (
+                                <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                              ) : getPublishStatus.isFetching ? (
+                                <RefreshCw className="mt-0.5 size-4 shrink-0 animate-spin text-muted-foreground" />
+                              ) : (
+                                <Info className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                              )}
+                              <div className="min-w-0 space-y-1">
+                                <p className="font-medium">
+                                  {formatTikTokPublishStatus(
+                                    tikTokPublishStatus?.status,
+                                  )}
+                                </p>
+                                <p className="break-all text-xs text-muted-foreground">
+                                  publish_id: {tikTokPublishStatusId}
+                                </p>
+                                {tikTokPublishStatus?.uploadedBytes ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    Enviado:{" "}
+                                    {formatSize(
+                                      tikTokPublishStatus.uploadedBytes,
+                                    )}
+                                  </p>
+                                ) : null}
+                                {tikTokPublishStatus?.publiclyAvailablePostIds
+                                  .length ? (
+                                  <p className="break-all text-xs text-muted-foreground">
+                                    Post público:{" "}
+                                    {tikTokPublishStatus.publiclyAvailablePostIds.join(
+                                      ", ",
+                                    )}
+                                  </p>
+                                ) : null}
+                                {tikTokPublishStatus?.failReason ? (
+                                  <p className="text-xs text-destructive">
+                                    Motivo: {tikTokPublishStatus.failReason}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">
+                                    {TIKTOK_PROCESSING_NOTICE}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
                       </>
                     )}
-                  </Button>
-                </span>
-              </TooltipTrigger>
-              {showDisclosureSelectionTooltip ? (
-                <TooltipContent side="top">
-                  <p>{COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}</p>
-                </TooltipContent>
-              ) : null}
-            </Tooltip>
+                  </div>
+                ) : (
+                  <div className="space-y-4 rounded-xl border border-border/70 bg-background/40 p-4">
+                    {!isYoutubeConnected ? (
+                      <p className="text-sm text-muted-foreground">
+                        Conecte o YouTube em Integrações para publicar.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Título</p>
+                        <Textarea
+                          {...publishForm.register("youtubeTitle")}
+                          placeholder="Título para upload no YouTube"
+                          className="min-h-24 resize-y"
+                          disabled={isPublishingAny}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
-            <p className="text-center text-xs text-muted-foreground">
-              {activePublishTab === IntegrationProvider.TIKTOK
-                ? TIKTOK_PROCESSING_NOTICE
-                : "O modal permanece aberto enquanto o envio estiver em andamento."}
-            </p>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="block"
+                      title={
+                        showDisclosureSelectionTooltip
+                          ? COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE
+                          : undefined
+                      }
+                    >
+                      <Button
+                        className="h-11 w-full rounded-xl"
+                        onClick={handlePublishActiveTab}
+                        disabled={isPublishingAny || !canPublishActiveTab}
+                      >
+                        {isPublishingAny ? (
+                          <>
+                            {publishLoadingLabel}
+                            <Loader2 className="ml-2 size-4 animate-spin" />
+                          </>
+                        ) : (
+                          <>
+                            {publishActionLabel}
+                            {activePublishTab === IntegrationProvider.TIKTOK &&
+                            hasSubmittedTikTokPublish ? (
+                              <CheckCircle2 className="ml-2 size-4" />
+                            ) : (
+                              <Send className="ml-2 size-4" />
+                            )}
+                          </>
+                        )}
+                      </Button>
+                    </span>
+                  </TooltipTrigger>
+                  {showDisclosureSelectionTooltip ? (
+                    <TooltipContent side="top">
+                      <p>{COMMERCIAL_DISCLOSURE_REQUIRED_MESSAGE}</p>
+                    </TooltipContent>
+                  ) : null}
+                </Tooltip>
+
+                <p className="text-center text-xs text-muted-foreground">
+                  {activePublishTab === IntegrationProvider.TIKTOK
+                    ? TIKTOK_PROCESSING_NOTICE
+                    : "O modal permanece aberto enquanto o envio estiver em andamento."}
+                </p>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

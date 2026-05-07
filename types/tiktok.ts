@@ -33,3 +33,12 @@ export type PublishVideoInput = {
 export type PublishVideoOutput = {
   publishId?: string;
 };
+
+export type TikTokPublishStatusOutput = {
+  publishId: string;
+  status: string;
+  failReason: string | null;
+  publiclyAvailablePostIds: string[];
+  uploadedBytes: number | null;
+  downloadedBytes: number | null;
+};
